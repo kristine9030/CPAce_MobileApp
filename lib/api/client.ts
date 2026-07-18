@@ -1,12 +1,30 @@
 import axios, { AxiosInstance } from 'axios';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { storage } from '@/lib/storage';
 import { mockRequest } from '@/lib/api/mock';
 
-// ── Toggle: true = fully offline, false = real Laravel backend ────────────────
-export const MOCK_MODE = true;
+// ── Toggle: true = fully offline, false = real Express backend (server/) ─────
+export const MOCK_MODE = false;
 
-// ── LAN IP for physical device — run `ipconfig` and use your IPv4 address ────
-export const API_BASE = 'http://10.0.2.2/api';
+// The Express backend (server/ folder) listens on this port.
+const API_PORT = 4000;
+
+// Resolve the dev machine's address automatically:
+//  - Expo Go / dev build on a physical device or emulator: derive the LAN IP
+//    from the Metro bundler host (Constants.expoConfig.hostUri).
+//  - Android emulator fallback: 10.0.2.2 maps to the host machine.
+//  - Web: localhost.
+function resolveHost(): string {
+  const hostUri: string | undefined =
+    (Constants.expoConfig as any)?.hostUri ?? (Constants as any).manifest2?.extra?.expoGo?.debuggerHost;
+  const host = hostUri?.split(':')[0];
+  if (host) return host;
+  if (Platform.OS === 'android') return '10.0.2.2';
+  return 'localhost';
+}
+
+export const API_BASE = `http://${resolveHost()}:${API_PORT}/api`;
 
 // ─── Mock client (same interface as axios instance) ───────────────────────────
 type Resp<T = any> = Promise<{ data: T }>;
