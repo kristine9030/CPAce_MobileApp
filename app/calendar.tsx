@@ -20,6 +20,7 @@ interface CalendarData {
     review_count: number;
     is_today: boolean;
     is_past: boolean;
+    events?: Array<{ id: number; topic: string; subject_code: string; count: number }>;
   }>;
   today_reviews: Array<{ id: number; topic: string; subject_code: string; due_at: string }>;
   upcoming: Array<{ date: string; topic: string; subject_code: string }>;
@@ -34,6 +35,7 @@ export default function CalendarScreen() {
   const [refresh, setRefresh] = useState(false);
   const [year, setYear]       = useState(new Date().getFullYear());
   const [month, setMonth]     = useState(new Date().getMonth() + 1);
+  const [selected, setSelected] = useState<string | null>(null);
 
   const load = useCallback(async (y: number, m: number, isRefresh = false) => {
     if (isRefresh) setRefresh(true);
@@ -50,13 +52,13 @@ export default function CalendarScreen() {
   const prevMonth = () => {
     const nm = month === 1 ? 12 : month - 1;
     const ny = month === 1 ? year - 1 : year;
-    setMonth(nm); setYear(ny);
+    setMonth(nm); setYear(ny); setSelected(null);
   };
 
   const nextMonth = () => {
     const nm = month === 12 ? 1 : month + 1;
     const ny = month === 12 ? year + 1 : year;
-    setMonth(nm); setYear(ny);
+    setMonth(nm); setYear(ny); setSelected(null);
   };
 
   if (loading) {
@@ -104,19 +106,26 @@ export default function CalendarScreen() {
           {/* Day Grid */}
           <View style={s.grid}>
             {blanks.map((_, i) => <View key={`b${i}`} style={s.dayCell} />)}
-            {d.days.map((day) => (
-              <View key={day.date} style={[s.dayCell, day.is_today && s.todayCell]}>
-                <Text style={[s.dayNum, day.is_today && s.todayNum, day.is_past && !day.is_today && s.pastNum]}>
-                  {day.day}
-                </Text>
-                {day.has_review && (
-                  <View style={[s.dot, { backgroundColor: day.is_today ? C.white : C.accent }]} />
-                )}
-                {day.review_count > 1 && (
-                  <Text style={[s.dotCount, day.is_today && { color: C.white }]}>{day.review_count}</Text>
-                )}
-              </View>
-            ))}
+            {d.days.map((day) => {
+              const isSelected = selected === day.date;
+              return (
+                <TouchableOpacity
+                  key={day.date}
+                  style={[s.dayCell, day.is_today && s.todayCell, isSelected && !day.is_today && s.selectedCell]}
+                  onPress={() => setSelected(isSelected ? null : day.date)}
+                >
+                  <Text style={[s.dayNum, day.is_today && s.todayNum, day.is_past && !day.is_today && s.pastNum, isSelected && !day.is_today && s.selectedNum]}>
+                    {day.day}
+                  </Text>
+                  {day.has_review && (
+                    <View style={[s.dot, { backgroundColor: day.is_today ? C.white : C.accent }]} />
+                  )}
+                  {day.review_count > 1 && (
+                    <Text style={[s.dotCount, day.is_today && { color: C.white }]}>{day.review_count}</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <View style={s.legend}>
@@ -126,6 +135,41 @@ export default function CalendarScreen() {
             </View>
           </View>
         </View>
+
+        {/* Selected Day's Reviews */}
+        {selected && (() => {
+          const day = d.days.find(x => x.date === selected);
+          const events = day?.events ?? [];
+          return (
+            <View style={[s.card, sh.sm]}>
+              <View style={s.selectedHeader}>
+                <Text style={s.sectionTitle}>Reviews on {fmtDateLong(selected)}</Text>
+                <TouchableOpacity onPress={() => setSelected(null)}>
+                  <Ionicons name="close-circle" size={20} color={C.muted} />
+                </TouchableOpacity>
+              </View>
+              {events.length === 0 ? (
+                <Text style={s.emptyDayText}>No reviews scheduled on this day.</Text>
+              ) : (
+                events.map((item) => (
+                  <View key={item.id} style={s.reviewRow}>
+                    <View style={s.reviewDot} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.reviewTopic}>{item.topic}</Text>
+                      <Text style={s.reviewSub}>{item.subject_code} · {item.count} question{item.count > 1 ? 's' : ''}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={s.reviewBtn}
+                      onPress={() => router.push({ pathname: '/(tabs)/quizzes', params: { subjectCode: item.subject_code ?? '' } })}
+                    >
+                      <Text style={s.reviewBtnText}>Study</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </View>
+          );
+        })()}
 
         {/* Today's Reviews */}
         {d.today_reviews?.length > 0 && (
@@ -181,6 +225,10 @@ function fmtDate(str: string) {
   return new Date(str).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
 }
 
+function fmtDateLong(str: string) {
+  return new Date(str).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 const s = StyleSheet.create({
   safe:         { flex: 1, backgroundColor: C.bg },
   center:       { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
@@ -195,6 +243,10 @@ const s = StyleSheet.create({
   grid:         { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell:      { width: `${100 / 7}%`, aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
   todayCell:    { backgroundColor: C.accent, borderRadius: r.full },
+  selectedCell: { borderWidth: 2, borderColor: C.accent, borderRadius: r.full },
+  selectedNum:  { color: C.accent, fontWeight: '800' },
+  selectedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  emptyDayText: { fontSize: 13, color: C.muted, paddingVertical: sp.xs },
   dayNum:       { fontSize: 14, fontWeight: '500', color: C.text },
   todayNum:     { color: C.white, fontWeight: '800' },
   pastNum:      { color: C.light },

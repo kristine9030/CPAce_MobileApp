@@ -108,7 +108,14 @@ router.get('/calendar', apiAuth, async (req, res, next) => {
       const ds = toSqlDate(date);
       const topics = byDate.get(ds);
       let reviewCount = 0;
-      if (topics) for (const t of topics.values()) reviewCount += t.count;
+      const events = [];
+      if (topics) {
+        for (const [topicId, t] of topics) {
+          reviewCount += t.count;
+          events.push({ id: Number(topicId), topic: t.topic, subject_code: t.subject_code, count: t.count });
+        }
+        events.sort((a, b) => b.count - a.count);
+      }
       days.push({
         date: ds,
         day,
@@ -116,6 +123,7 @@ router.get('/calendar', apiAuth, async (req, res, next) => {
         review_count: reviewCount,
         is_today: ds === todayStr,
         is_past: date < todayStart && ds !== todayStr,
+        events,
       });
     }
 
