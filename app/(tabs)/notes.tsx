@@ -2,13 +2,14 @@ import { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, ScrollView, ActivityIndicator,
-  RefreshControl, Alert, KeyboardAvoidingView, Platform,
+  RefreshControl, Alert, KeyboardAvoidingView, Platform, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
 import { C, sp, r, sh } from '@/constants/cpace-theme';
+import { useAiTutor } from '@/lib/context/ai-tutor-context';
 
 interface Note {
   id: number;
@@ -23,6 +24,7 @@ interface Note {
 type FormNote = { title: string; content: string };
 
 export default function NotesScreen() {
+  const { askAI } = useAiTutor();
   const [notes, setNotes]         = useState<Note[]>([]);
   const [filtered, setFiltered]   = useState<Note[]>([]);
   const [search, setSearch]       = useState('');
@@ -33,6 +35,22 @@ export default function NotesScreen() {
   const [form, setForm]           = useState<FormNote>({ title: '', content: '' });
   const [saving, setSaving]       = useState(false);
   const [favOnly, setFavOnly]     = useState(false);
+  const [viewing, setViewing]     = useState<Note | null>(null);
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+
+  const selectedText = viewing ? viewing.content.slice(selection.start, selection.end).trim() : '';
+
+  const askAboutSelection = () => {
+    if (!selectedText) return;
+    askAI(`Please explain this from my CPA review notes and give the rationale behind it:\n\n"${selectedText}"`);
+    setViewing(null);
+    setSelection({ start: 0, end: 0 });
+  };
+
+  const searchSelectionOnline = () => {
+    if (!selectedText) return;
+    Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(selectedText)}`);
+  };
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefresh(true);
@@ -156,7 +174,7 @@ export default function NotesScreen() {
         contentContainerStyle={{ padding: sp.md }}
         refreshControl={<RefreshControl refreshing={refresh} onRefresh={() => load(true)} tintColor={C.accent} />}
         renderItem={({ item }) => (
-          <View style={[s.card, sh.sm]}>
+          <TouchableOpacity style={[s.card, sh.sm]} activeOpacity={0.8} onPress={() => setViewing(item)}>
             <View style={s.cardTop}>
               <Text style={s.noteTile} numberOfLines={1}>{item.title}</Text>
               <TouchableOpacity onPress={() => toggleNoteFav(item)}>
@@ -178,7 +196,7 @@ export default function NotesScreen() {
                 <Text style={[s.actionText, { color: C.danger }]}>Delete</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
         ListEmptyComponent={
           <View style={s.emptyBox}>
@@ -224,6 +242,47 @@ export default function NotesScreen() {
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
+
+      {/* View Note — highlight text to ask AI or search online */}
+      <Modal
+        visible={!!viewing}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setViewing(null); setSelection({ start: 0, end: 0 }); }}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+          <View style={s.modalHeader}>
+            <TouchableOpacity onPress={() => { setViewing(null); setSelection({ start: 0, end: 0 }); }}>
+              <Text style={s.modalCancel}>Close</Text>
+            </TouchableOpacity>
+            <Text style={s.modalTitle} numberOfLines={1}>{viewing?.title}</Text>
+            <View style={{ width: 44 }} />
+          </View>
+          <Text style={s.viewHint}>Highlight text below to ask AI or search it online.</Text>
+          <ScrollView contentContainerStyle={{ padding: sp.lg }} keyboardShouldPersistTaps="handled">
+            <TextInput
+              style={s.viewContent}
+              value={viewing?.content ?? ''}
+              editable={false}
+              multiline
+              selection={selection}
+              onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
+            />
+          </ScrollView>
+          {selectedText.length > 0 && (
+            <View style={[s.selectionBar, sh.md]}>
+              <TouchableOpacity style={s.selectionBtn} onPress={askAboutSelection}>
+                <Ionicons name="sparkles" size={16} color={C.white} />
+                <Text style={s.selectionBtnText}>Ask AI</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.selectionBtn, { backgroundColor: '#374151' }]} onPress={searchSelectionOnline}>
+                <Ionicons name="search" size={16} color={C.white} />
+                <Text style={s.selectionBtnText}>Search</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -259,4 +318,13 @@ const s = StyleSheet.create({
   formLabel:    { fontSize: 13, fontWeight: '600', color: C.muted, marginBottom: 6, marginTop: sp.sm },
   formInput:    { backgroundColor: C.card, borderRadius: r.md, borderWidth: 1, borderColor: C.border, paddingHorizontal: sp.md, paddingVertical: 12, fontSize: 15, color: C.text },
   formTextarea: { height: 200, paddingTop: 12 },
+  viewHint:     { fontSize: 12, color: C.muted, paddingHorizontal: sp.lg, paddingTop: sp.sm, fontStyle: 'italic' },
+  viewContent:  { fontSize: 15, color: C.text, lineHeight: 22 },
+  selectionBar: {
+    position: 'absolute', bottom: 24, left: sp.lg, right: sp.lg,
+    flexDirection: 'row', gap: sp.sm, backgroundColor: '#1f2937',
+    borderRadius: r.lg, padding: sp.sm,
+  },
+  selectionBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.accent, borderRadius: r.md, paddingVertical: 10 },
+  selectionBtnText: { color: C.white, fontSize: 13, fontWeight: '700' },
 });

@@ -5,6 +5,8 @@ import { ActivityIndicator, View } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, Poppins_900Black } from '@expo-google-fonts/poppins';
 import { AuthProvider, useAuth } from '@/lib/context/auth-context';
+import { AiTutorProvider } from '@/lib/context/ai-tutor-context';
+import { AiTutorWidget } from '@/components/ai-tutor/ai-tutor-widget';
 import { C } from '@/constants/cpace-theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -49,19 +51,24 @@ function RootLayoutNav() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="quiz"         options={{ animation: 'slide_from_right' }} />
-    </Stack>
+    <>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="quiz"         options={{ animation: 'slide_from_right' }} />
+      </Stack>
+      {user && <AiTutorWidget />}
+    </>
   );
 }
 
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootLayoutNav />
-      <StatusBar style="light" />
+      <AiTutorProvider>
+        <RootLayoutNav />
+        <StatusBar style="light" />
+      </AiTutorProvider>
     </AuthProvider>
   );
 }

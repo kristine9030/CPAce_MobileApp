@@ -445,6 +445,15 @@ export async function mockRequest(method: string, url: string, body?: any): Prom
     return buildCalendar(y, m);
   }
 
+  if (method === 'POST' && url === '/ai-tutor/chat') {
+    const last = (body?.messages ?? []).slice(-1)[0]?.content ?? '';
+    return {
+      ok: true,
+      provider: 'mock',
+      reply: `**Mock AI Tutor** (offline mode)\n\nYou asked: "${last.slice(0, 200)}"\n\nConnect to the real backend (set \`MOCK_MODE = false\` in \`lib/api/client.ts\`) to get real CPA-review answers from Gemini/OpenRouter.`,
+    };
+  }
+
   if (method === 'GET' && url === '/notifications') {
     return { notifications, unread_count: notifications.filter(n => !n.read).length };
   }

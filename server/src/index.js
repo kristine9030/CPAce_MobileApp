@@ -24,6 +24,7 @@ app.use('/api', require('./routes/performance').router);
 app.use('/api', require('./routes/notes').router);
 app.use('/api', require('./routes/calendar').router);
 app.use('/api', require('./routes/notifications').router);
+app.use('/api', require('./routes/aiTutor').router);
 
 app.use((req, res) => res.status(404).json({ message: 'Not found.' }));
 
