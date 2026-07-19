@@ -50,7 +50,12 @@ export default function SubjectsScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
-        <Text style={s.title}>Subjects</Text>
+        <View style={s.headerTop}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)')} style={s.backBtn}>
+            <Ionicons name="arrow-back" size={22} color={C.white} />
+          </TouchableOpacity>
+          <Text style={s.title}>Subjects</Text>
+        </View>
         <Text style={s.sub}>Choose a subject to study</Text>
       </View>
 
@@ -100,6 +105,8 @@ const s = StyleSheet.create({
   safe:         { flex: 1, backgroundColor: C.bg },
   center:       { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
   header:       { backgroundColor: C.primary, padding: sp.lg },
+  headerTop:    { flexDirection: 'row', alignItems: 'center' },
+  backBtn:      { width: 32, marginRight: sp.xs },
   title:        { fontSize: 24, fontWeight: '800', color: C.white },
   sub:          { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
   card:         { flexDirection: 'row', backgroundColor: C.card, borderRadius: r.lg, padding: sp.md, marginBottom: sp.sm, alignItems: 'flex-start' },

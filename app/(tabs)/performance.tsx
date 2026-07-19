@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, RefreshControl, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
 import { C, sp, r, sh } from '@/constants/cpace-theme';
 
@@ -25,6 +26,7 @@ interface PerfData {
 }
 
 export default function PerformanceScreen() {
+  const router                = useRouter();
   const [data, setData]       = useState<PerfData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refresh, setRefresh] = useState(false);
@@ -51,7 +53,12 @@ export default function PerformanceScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
-        <Text style={s.title}>Performance</Text>
+        <View style={s.headerTop}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)')} style={s.backBtn}>
+            <Ionicons name="arrow-back" size={22} color={C.white} />
+          </TouchableOpacity>
+          <Text style={s.title}>Performance</Text>
+        </View>
         <Text style={s.sub}>Your learning analytics</Text>
       </View>
 
@@ -172,6 +179,8 @@ const s = StyleSheet.create({
   safe:         { flex: 1, backgroundColor: C.bg },
   center:       { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
   header:       { backgroundColor: C.primary, padding: sp.lg },
+  headerTop:    { flexDirection: 'row', alignItems: 'center' },
+  backBtn:      { width: 32, marginRight: sp.xs },
   title:        { fontSize: 24, fontWeight: '800', color: C.white },
   sub:          { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
   grid:         { flexDirection: 'row', flexWrap: 'wrap', padding: sp.md, gap: sp.sm },

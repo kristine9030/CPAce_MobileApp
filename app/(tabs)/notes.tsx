@@ -5,7 +5,7 @@ import {
   RefreshControl, Alert, KeyboardAvoidingView, Platform, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
 import { C, sp, r, sh } from '@/constants/cpace-theme';
@@ -24,6 +24,7 @@ interface Note {
 type FormNote = { title: string; content: string };
 
 export default function NotesScreen() {
+  const router      = useRouter();
   const { askAI } = useAiTutor();
   const [notes, setNotes]         = useState<Note[]>([]);
   const [filtered, setFiltered]   = useState<Note[]>([]);
@@ -142,9 +143,14 @@ export default function NotesScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
-        <View>
-          <Text style={s.title}>Review Notes</Text>
-          <Text style={s.sub}>{notes.length} notes</Text>
+        <View style={s.headerLeft}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)')} style={s.backBtn}>
+            <Ionicons name="arrow-back" size={22} color={C.white} />
+          </TouchableOpacity>
+          <View>
+            <Text style={s.title}>Review Notes</Text>
+            <Text style={s.sub}>{notes.length} notes</Text>
+          </View>
         </View>
         <TouchableOpacity style={s.addBtn} onPress={openCreate}>
           <Ionicons name="add" size={24} color={C.white} />
@@ -292,6 +298,8 @@ const s = StyleSheet.create({
   safe:         { flex: 1, backgroundColor: C.bg },
   center:       { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
   header:       { backgroundColor: C.primary, paddingHorizontal: sp.lg, paddingVertical: sp.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerLeft:   { flexDirection: 'row', alignItems: 'center' },
+  backBtn:      { width: 32, marginRight: sp.xs },
   title:        { fontSize: 24, fontWeight: '800', color: C.white },
   sub:          { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
   addBtn:       { width: 40, height: 40, borderRadius: 20, backgroundColor: C.accent, justifyContent: 'center', alignItems: 'center' },

@@ -67,7 +67,12 @@ export default function QuizzesScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
-        <Text style={s.title}>Quizzes</Text>
+        <View style={s.headerLeft}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)')} style={s.backBtn}>
+            <Ionicons name="arrow-back" size={22} color={C.white} />
+          </TouchableOpacity>
+          <Text style={s.title}>Quizzes</Text>
+        </View>
         <TouchableOpacity onPress={() => router.push('/quiz/history')} style={s.histBtn}>
           <Ionicons name="time" size={18} color={C.white} />
           <Text style={s.histText}>History</Text>
@@ -156,6 +161,8 @@ const s = StyleSheet.create({
   header:        { backgroundColor: C.primary, paddingHorizontal: sp.lg, paddingVertical: sp.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title:         { fontSize: 24, fontWeight: '800', color: C.white },
   histBtn:       { flexDirection: 'row', alignItems: 'center', gap: sp.xs },
+  headerLeft:    { flexDirection: 'row', alignItems: 'center' },
+  backBtn:       { width: 32, marginRight: sp.xs },
   histText:      { color: C.white, fontSize: 13, fontWeight: '600' },
   sectionTitle:  { fontSize: 14, fontWeight: '700', color: C.muted, letterSpacing: 0.5, marginBottom: sp.sm, marginTop: sp.sm },
   modeCard:      { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: r.lg, padding: sp.md, marginBottom: sp.sm, borderWidth: 1, borderColor: 'transparent', ...sh.sm },
