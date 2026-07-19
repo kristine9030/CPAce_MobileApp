@@ -280,6 +280,9 @@ export default function TabsLayout() {
       <Tabs.Screen name="quizzes" />
       <Tabs.Screen name="performance" />
       <Tabs.Screen name="subjects" />
+      <Tabs.Screen name="calendar" />
+      <Tabs.Screen name="achievements" />
+      <Tabs.Screen name="settings" />
     </Tabs>
   );
 }

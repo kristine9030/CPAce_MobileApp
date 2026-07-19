@@ -53,9 +53,6 @@ function RootLayoutNav() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="quiz"         options={{ animation: 'slide_from_right' }} />
-      <Stack.Screen name="calendar"     options={{ animation: 'slide_from_right' }} />
-      <Stack.Screen name="achievements" options={{ animation: 'slide_from_right' }} />
-      <Stack.Screen name="settings"     options={{ animation: 'slide_from_right' }} />
     </Stack>
   );
 }
