@@ -159,6 +159,9 @@ interface Notification {
 
 interface SearchSubject { id: number; code: string; name: string; color: string }
 interface SearchNote    { id: number; title: string; content: string }
+interface SearchTopic   { id: number; name: string; subjectId: number; subjectCode: string; subjectName: string; color: string }
+interface SearchPage    { name: string; icon: string; route: string; keywords: string[] }
+interface SearchAch     { name: string; description: string; icon: string }
 
 interface SubjectFull {
   id: number; code: string; name: string; description: string;
@@ -177,6 +180,37 @@ interface TopicRecommendation {
   mastery: number;
   reason: string;
 }
+
+/* ── Global search data ── */
+const SEARCH_PAGES: SearchPage[] = [
+  { name: 'Performance', icon: 'stats-chart', route: '/(tabs)/performance', keywords: ['progress', 'scores', 'accuracy', 'results', 'stats', 'analytics', 'metrics', 'tracking', 'mastery', 'chart'] },
+  { name: 'Achievements', icon: 'trophy', route: '/achievements', keywords: ['badges', 'rewards', 'trophies', 'earned', 'unlocked', 'goals', 'milestones', 'medals'] },
+  { name: 'Quizzes', icon: 'help-circle', route: '/(tabs)/quizzes', keywords: ['exam', 'test', 'practice', 'questions', 'assessment', 'challenge', 'adaptive', 'timed', 'topic', 'mock'] },
+  { name: 'Notes', icon: 'document-text', route: '/(tabs)/notes', keywords: ['review', 'study', 'materials', 'summary', 'revision', 'highlights', 'annotations', 'reading'] },
+  { name: 'Settings', icon: 'settings', route: '/(tabs)/settings', keywords: ['profile', 'account', 'preferences', 'configuration', 'password', 'email', 'logout'] },
+  { name: 'Dashboard', icon: 'home', route: '/(tabs)', keywords: ['home', 'overview', 'main', 'landing', 'subjects', 'streak'] },
+  { name: 'AI Tutor', icon: 'chatbubbles', route: '/(tabs)', keywords: ['help', 'assistant', 'chat', 'questions', 'explain', 'tutor', 'guide'] },
+];
+
+const SEARCH_ACHIEVEMENTS: SearchAch[] = [
+  { name: 'First Quiz', description: 'Complete your first quiz.', icon: 'flash' },
+  { name: '3-Day Streak', description: 'Study 3 days in a row.', icon: 'flame' },
+  { name: 'Week Warrior', description: 'Study 7 days in a row.', icon: 'flame' },
+  { name: 'Monthly Champion', description: 'Study 30 days in a row.', icon: 'flame' },
+  { name: '100 Points', description: 'Earn 100 total points.', icon: 'star' },
+  { name: '500 Points', description: 'Earn 500 total points.', icon: 'star' },
+  { name: 'Point Millionaire', description: 'Earn 1,000 total points.', icon: 'trophy' },
+  { name: 'CPACE Legend', description: 'Earn 5,000 total points.', icon: 'trophy' },
+  { name: 'Topic Explorer', description: 'Complete quizzes in 10 different topics.', icon: 'book' },
+  { name: 'Quick Thinker', description: 'Answer 20 questions correctly in under 10 minutes.', icon: 'bolt' },
+  { name: 'Sharpshooter', description: 'Score 90% or higher on any quiz.', icon: 'bullseye' },
+  { name: 'Centurion', description: 'Answer 100 questions across all quizzes.', icon: 'help-buoy' },
+  { name: 'Mock Master', description: 'Complete 5 mock exams.', icon: 'document-text' },
+  { name: 'Time Manager', description: 'Finish 10 timed quizzes with 70%+ accuracy.', icon: 'clock' },
+  { name: 'Board Ready', description: 'Reach 80% overall readiness.', icon: 'school' },
+  { name: 'Subject Master', description: 'Achieve 80%+ accuracy in any subject.', icon: 'layers' },
+  { name: 'Score Booster', description: 'Improve overall accuracy by 10%.', icon: 'trending-up' },
+];
 
 /* ── Subject card images (mapped by code) ── */
 const SUBJECT_IMAGES: Record<string, any> = {
@@ -355,6 +389,7 @@ export default function DashboardScreen() {
   const [query, setQuery]           = useState('');
   const [allSubjects, setAllSubjects] = useState<SearchSubject[]>([]);
   const [allNotes, setAllNotes]       = useState<SearchNote[]>([]);
+  const [allTopics, setAllTopics]     = useState<SearchTopic[]>([]);
 
   const [subjects, setSubjects] = useState<SubjectFull[]>([]);
   const [recommendations, setRecommendations] = useState<TopicRecommendation[]>([]);
@@ -468,8 +503,20 @@ export default function DashboardScreen() {
         client.get('/subjects'),
         client.get('/review-notes'),
       ]);
-      setAllSubjects(subRes.data.subjects ?? subRes.data ?? []);
+      const subs = subRes.data.subjects ?? subRes.data ?? [];
+      setAllSubjects(subs);
       setAllNotes(noteRes.data.data ?? []);
+      const topics: SearchTopic[] = [];
+      const walk = (nodes: any[], subject: any) => {
+        for (const n of nodes) {
+          topics.push({ id: n.id, name: n.name, subjectId: subject.id, subjectCode: subject.code, subjectName: subject.name, color: subject.color });
+          if (n.children?.length) walk(n.children, subject);
+        }
+      };
+      for (const s of subs) {
+        if (s.topics) walk(s.topics, s);
+      }
+      setAllTopics(topics);
     } catch {}
   };
 
@@ -567,7 +614,7 @@ export default function DashboardScreen() {
 
       {/* ── Search modal ── */}
       <Modal visible={searchOpen} animationType="slide" onRequestClose={() => setSearchOpen(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top']}>
+        <View style={[{ flex: 1, backgroundColor: C.bg }, { paddingTop: insets.top }]}>
           <View style={styles.searchHeader}>
             <View style={styles.searchBox}>
               <Ionicons name="search" size={16} color="#9CA3AF" />
@@ -575,7 +622,7 @@ export default function DashboardScreen() {
                 style={styles.searchInput}
                 value={query}
                 onChangeText={setQuery}
-                placeholder="Search subjects and notes..."
+                placeholder="Search subjects, topics, pages..."
                 placeholderTextColor="#9CA3AF"
                 autoFocus
               />
@@ -592,17 +639,27 @@ export default function DashboardScreen() {
           <SearchResults
             query={query}
             subjects={allSubjects}
+            topics={allTopics}
             notes={allNotes}
+            weaknesses={data?.weaknesses ?? []}
             onSubject={(sub) => {
               setSearchOpen(false);
               router.push({ pathname: '/(tabs)/quizzes', params: { subjectId: sub.id, subjectCode: sub.code } });
+            }}
+            onTopic={(topic) => {
+              setSearchOpen(false);
+              router.push({ pathname: '/topic-materials', params: { subjectId: String(topic.subjectId), topicId: String(topic.id), subjectCode: topic.subjectCode, topicName: topic.name } });
             }}
             onNote={() => {
               setSearchOpen(false);
               router.push('/(tabs)/notes');
             }}
+            onPage={(route) => {
+              setSearchOpen(false);
+              router.push(route as any);
+            }}
           />
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {/* ── Notifications modal ── */}
@@ -920,30 +977,67 @@ function masteryRamp(pct: number) {
 }
 
 /* ── Search results ── */
-function SearchResults({ query, subjects, notes, onSubject, onNote }: {
+function SearchResults({ query, subjects, topics, notes, weaknesses, onSubject, onTopic, onNote, onPage }: {
   query: string;
   subjects: SearchSubject[];
+  topics: SearchTopic[];
   notes: SearchNote[];
+  weaknesses: { topic: string; subject_code: string }[];
   onSubject: (sub: SearchSubject) => void;
+  onTopic: (topic: SearchTopic) => void;
   onNote: (note: SearchNote) => void;
+  onPage: (route: string) => void;
 }) {
   const q = query.trim().toLowerCase();
-  const subHits  = q ? subjects.filter(sub => sub.name.toLowerCase().includes(q) || sub.code.toLowerCase().includes(q)) : subjects;
-  const noteHits = q ? notes.filter(n => n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q)) : [];
+  if (!q) {
+    return (
+      <View style={srStyles.empty}>
+        <Ionicons name="search" size={40} color="#D1D5DB" />
+        <Text style={srStyles.emptyText}>Search across subjects, topics, pages, achievements, and more</Text>
+      </View>
+    );
+  }
+
+  const subHits  = subjects.filter(sub => sub.name.toLowerCase().includes(q) || sub.code.toLowerCase().includes(q));
+  const topicHits = topics.filter(t => t.name.toLowerCase().includes(q) || t.subjectName.toLowerCase().includes(q) || t.subjectCode.toLowerCase().includes(q));
+  const noteHits = notes.filter(n => n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q));
+  const pageHits = SEARCH_PAGES.filter(p => p.name.toLowerCase().includes(q) || p.keywords.some(k => k.includes(q)));
+  const achHits  = SEARCH_ACHIEVEMENTS.filter(a => a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q));
+  const weakHits = weaknesses.filter(w => w.topic.toLowerCase().includes(q) || w.subject_code.toLowerCase().includes(q));
 
   type Row =
     | { kind: 'header'; key: string; label: string }
     | { kind: 'subject'; key: string; subject: SearchSubject }
-    | { kind: 'note'; key: string; note: SearchNote };
+    | { kind: 'topic'; key: string; topic: SearchTopic }
+    | { kind: 'note'; key: string; note: SearchNote }
+    | { kind: 'page'; key: string; page: SearchPage }
+    | { kind: 'achievement'; key: string; achievement: SearchAch }
+    | { kind: 'weakness'; key: string; weakness: { topic: string; subject_code: string } };
 
   const rows: Row[] = [];
+  if (pageHits.length) {
+    rows.push({ kind: 'header', key: 'h-page', label: 'Pages' });
+    pageHits.forEach((p, i) => rows.push({ kind: 'page', key: `p${i}`, page: p }));
+  }
   if (subHits.length) {
     rows.push({ kind: 'header', key: 'h-sub', label: 'Subjects' });
     subHits.forEach(sub => rows.push({ kind: 'subject', key: `s${sub.id}`, subject: sub }));
   }
+  if (topicHits.length) {
+    rows.push({ kind: 'header', key: 'h-topic', label: 'Topics' });
+    topicHits.forEach((t, i) => rows.push({ kind: 'topic', key: `t${i}`, topic: t }));
+  }
+  if (achHits.length) {
+    rows.push({ kind: 'header', key: 'h-ach', label: 'Achievements' });
+    achHits.forEach((a, i) => rows.push({ kind: 'achievement', key: `a${i}`, achievement: a }));
+  }
   if (noteHits.length) {
     rows.push({ kind: 'header', key: 'h-note', label: 'Notes' });
     noteHits.forEach(n => rows.push({ kind: 'note', key: `n${n.id}`, note: n }));
+  }
+  if (weakHits.length) {
+    rows.push({ kind: 'header', key: 'h-weak', label: 'Weaknesses' });
+    weakHits.forEach((w, i) => rows.push({ kind: 'weakness', key: `w${i}`, weakness: w }));
   }
 
   if (rows.length === 0) {
@@ -973,6 +1067,66 @@ function SearchResults({ query, subjects, notes, onSubject, onNote }: {
               <View style={{ flex: 1 }}>
                 <Text style={srStyles.rowTitle}>{sub.name}</Text>
                 <Text style={srStyles.rowSub}>Tap to start a quiz</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+            </TouchableOpacity>
+          );
+        }
+        if (item.kind === 'topic') {
+          const t = item.topic;
+          return (
+            <TouchableOpacity style={srStyles.row} onPress={() => onTopic(t)}>
+              <View style={[srStyles.icon, { backgroundColor: (t.color || C.accent) + '20' }]}>
+                <Ionicons name="git-branch" size={18} color={t.color || C.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={srStyles.rowTitle}>{t.name}</Text>
+                <Text style={srStyles.rowSub}>{t.subjectCode} &middot; View materials &amp; quiz</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+            </TouchableOpacity>
+          );
+        }
+        if (item.kind === 'page') {
+          const p = item.page;
+          return (
+            <TouchableOpacity style={srStyles.row} onPress={() => onPage(p.route)}>
+              <View style={[srStyles.icon, { backgroundColor: C.primary + '15' }]}>
+                <Ionicons name={p.icon as any} size={18} color={C.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={srStyles.rowTitle}>{p.name}</Text>
+                <Text style={srStyles.rowSub}>Go to {p.name}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+            </TouchableOpacity>
+          );
+        }
+        if (item.kind === 'achievement') {
+          const a = item.achievement;
+          return (
+            <TouchableOpacity style={srStyles.row} onPress={() => onPage('/achievements')}>
+              <View style={[srStyles.icon, { backgroundColor: '#FEF3C7' }]}>
+                <Ionicons name="trophy" size={18} color="#D97706" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={srStyles.rowTitle}>{a.name}</Text>
+                <Text style={srStyles.rowSub}>{a.description}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+            </TouchableOpacity>
+          );
+        }
+        if (item.kind === 'weakness') {
+          const w = item.weakness;
+          return (
+            <TouchableOpacity style={srStyles.row} onPress={() => onPage('/(tabs)/performance')}>
+              <View style={[srStyles.icon, { backgroundColor: '#FEE2E2' }]}>
+                <Ionicons name="warning" size={18} color="#DC2626" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={srStyles.rowTitle}>{w.topic}</Text>
+                <Text style={srStyles.rowSub}>{w.subject_code} &middot; Needs practice</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
             </TouchableOpacity>

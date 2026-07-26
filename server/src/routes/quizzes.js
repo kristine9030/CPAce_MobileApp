@@ -10,6 +10,7 @@ const paraphraser = require('../services/paraphraser');
 const weakness = require('../services/weakness');
 const streakService = require('../services/streak');
 const scheduler = require('../services/scheduler');
+const { evaluateAndAward } = require('./achievements');
 const { nowSql, parseSql, toIso } = require('../utils/dates');
 
 const router = express.Router();
@@ -404,6 +405,16 @@ router.post('/quizzes/:id(\\d+)/submit', apiAuth, async (req, res, next) => {
       } catch (e) {
         console.error('post-submit scheduling failed:', e);
       }
+    }
+
+    try {
+      const newAch = await evaluateAndAward(session.student_id);
+      if (newAch.length) {
+        const io = req.app.get('io');
+        if (io) io.to(`user:${session.student_id}`).emit('achievements', newAch);
+      }
+    } catch (e) {
+      console.error('achievement evaluation failed:', e);
     }
 
     const fresh = await one('SELECT score_percent FROM quiz_sessions WHERE id = ?', [session.id]);

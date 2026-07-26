@@ -38,6 +38,7 @@ app.use('/api', require('./routes/calendar').router);
 app.use('/api', require('./routes/notifications').router);
 app.use('/api', require('./routes/aiTutor').router);
 app.use('/api', require('./routes/messages').router);
+app.use('/api', require('./routes/achievements').router);
 
 app.use((req, res) => res.status(404).json({ message: 'Not found.' }));
 
