@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Alert, Image, Switch,
+  TextInput, Alert, Image, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client, { MOCK_MODE } from '@/lib/api/client';
 import { useAuth } from '@/lib/context/auth-context';
-import { C, sp, r, sh } from '@/constants/cpace-theme';
+import { C, sp, r, sh, font, type } from '@/constants/cpace-theme';
+import { ScreenHeader } from '@/components/ui/screen-header';
+import { GradientButton, GradientFill } from '@/components/ui/gradient';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -62,25 +64,20 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={s.safe}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={{ width: 40 }}>
-          <Ionicons name="arrow-back" size={24} color={C.white} />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>Settings</Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <ScreenHeader title="Settings" subtitle="Manage your profile & preferences" onBack={() => router.back()} />
 
       <ScrollView contentContainerStyle={{ padding: sp.md, paddingBottom: sp.xl }}>
 
         {/* Profile card */}
-        <View style={[s.card, sh.sm, s.profileRow]}>
+        <View style={[s.cardWrap, s.profileRow]}>
+          <View style={[s.card, s.profileRow]}>
           {user?.profile_photo ? (
             <Image source={{ uri: user.profile_photo }} style={s.avatar} />
           ) : (
-            <View style={[s.avatar, s.avatarFallback]}>
+            <GradientFill style={[s.avatar, s.avatarFallback]}>
               <Text style={s.avatarInitials}>{initials}</Text>
-            </View>
+            </GradientFill>
           )}
           <View style={{ flex: 1, marginLeft: sp.md }}>
             <Text style={s.profileName}>{user?.first_name} {user?.last_name}</Text>
@@ -96,11 +93,13 @@ export default function SettingsScreen() {
               </View>
             </View>
           </View>
+          </View>
         </View>
 
         {/* Edit profile */}
         <Text style={s.sectionTitle}>Profile</Text>
-        <View style={[s.card, sh.sm]}>
+        <View style={[s.cardWrap]}>
+          <View style={s.card}>
           <Text style={s.label}>First Name</Text>
           <TextInput
             style={s.input}
@@ -127,22 +126,26 @@ export default function SettingsScreen() {
             keyboardType="numbers-and-punctuation"
             autoCapitalize="none"
           />
-          <Text style={s.hint}>Used for the "Days to Exam" countdown on your dashboard.</Text>
+          <Text style={s.hint}>Used for the &quot;Days to Exam&quot; countdown on your dashboard.</Text>
 
-          <TouchableOpacity
-            style={[s.saveBtn, (!dirty || saving) && { opacity: 0.5 }]}
+          <GradientButton
+            radius={r.md}
+            style={{ marginTop: sp.md }}
+            contentStyle={s.saveBtn}
             onPress={save}
-            disabled={!dirty || saving}
+            disabled={!dirty}
+            loading={saving}
           >
-            {saving
-              ? <ActivityIndicator color={C.white} />
-              : <><Ionicons name="save-outline" size={18} color={C.white} /><Text style={s.saveText}>Save Changes</Text></>}
-          </TouchableOpacity>
+            <Ionicons name="save-outline" size={18} color={C.white} />
+            <Text style={s.saveText}>Save Changes</Text>
+          </GradientButton>
+          </View>
         </View>
 
         {/* Preferences */}
         <Text style={s.sectionTitle}>Preferences</Text>
-        <View style={[s.card, sh.sm]}>
+        <View style={[s.cardWrap]}>
+          <View style={s.card}>
           <View style={s.prefRow}>
             <View style={{ flex: 1 }}>
               <Text style={s.prefLabel}>Daily study reminders</Text>
@@ -155,30 +158,35 @@ export default function SettingsScreen() {
               thumbColor={C.white}
             />
           </View>
+          </View>
         </View>
 
         {/* Shortcuts */}
         <Text style={s.sectionTitle}>More</Text>
-        <View style={[s.card, sh.sm, { paddingVertical: 0 }]}>
-          <LinkRow icon="trophy-outline"   label="Achievements" onPress={() => router.push('/achievements')} />
-          <LinkRow icon="time-outline"     label="Quiz History" onPress={() => router.push('/quiz/history')} />
-          <LinkRow icon="calendar-outline" label="Study Calendar" onPress={() => router.push('/calendar')} last />
+        <View style={[s.cardWrap, { paddingVertical: 0 }]}>
+          <View style={[s.card, { paddingVertical: 0 }]}>
+            <LinkRow icon="trophy-outline"   label="Achievements" onPress={() => router.push('/achievements')} />
+            <LinkRow icon="time-outline"     label="Quiz History" onPress={() => router.push('/quiz/history')} />
+            <LinkRow icon="calendar-outline" label="Study Calendar" onPress={() => router.push('/calendar')} last />
+          </View>
         </View>
 
         {/* About */}
         <Text style={s.sectionTitle}>About</Text>
-        <View style={[s.card, sh.sm]}>
-          <View style={s.aboutRow}>
-            <Text style={s.aboutKey}>App</Text>
-            <Text style={s.aboutVal}>CPAce — CPA Board Exam Reviewer</Text>
-          </View>
-          <View style={s.aboutRow}>
-            <Text style={s.aboutKey}>Version</Text>
-            <Text style={s.aboutVal}>1.0.0</Text>
-          </View>
-          <View style={[s.aboutRow, { borderBottomWidth: 0 }]}>
-            <Text style={s.aboutKey}>Data source</Text>
-            <Text style={s.aboutVal}>{MOCK_MODE ? 'Offline demo data' : 'Live server'}</Text>
+        <View style={[s.cardWrap]}>
+          <View style={s.card}>
+            <View style={s.aboutRow}>
+              <Text style={s.aboutKey}>App</Text>
+              <Text style={s.aboutVal}>CPAce — CPA Board Exam Reviewer</Text>
+            </View>
+            <View style={s.aboutRow}>
+              <Text style={s.aboutKey}>Version</Text>
+              <Text style={s.aboutVal}>1.0.0</Text>
+            </View>
+            <View style={[s.aboutRow, { borderBottomWidth: 0 }]}>
+              <Text style={s.aboutKey}>Data source</Text>
+              <Text style={s.aboutVal}>{MOCK_MODE ? 'Offline demo data' : 'Live server'}</Text>
+            </View>
           </View>
         </View>
 
@@ -205,32 +213,31 @@ function LinkRow({ icon, label, onPress, last }: { icon: any; label: string; onP
 
 const s = StyleSheet.create({
   safe:           { flex: 1, backgroundColor: C.bg },
-  header:         { backgroundColor: C.primary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: sp.lg, paddingVertical: sp.md },
-  headerTitle:    { flex: 1, fontSize: 18, fontWeight: '700', color: C.white, textAlign: 'center' },
-  card:           { backgroundColor: C.card, borderRadius: r.lg, padding: sp.md, marginBottom: sp.md },
+  cardWrap:      { borderRadius: r.lg, marginBottom: sp.md, overflow: 'hidden', },
+  card:           { backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.md, overflow: 'hidden' },
   profileRow:     { flexDirection: 'row', alignItems: 'center' },
   avatar:         { width: 56, height: 56, borderRadius: 28 },
-  avatarFallback: { backgroundColor: C.primary, justifyContent: 'center', alignItems: 'center' },
-  avatarInitials: { color: C.white, fontSize: 20, fontWeight: '700' },
-  profileName:    { fontSize: 17, fontWeight: '800', color: C.text },
-  profileEmail:   { fontSize: 13, color: C.muted, marginTop: 1 },
+  avatarFallback: { justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  avatarInitials: { color: C.white, fontSize: 20, fontFamily: font.bold },
+  profileName:    { fontSize: 17, fontFamily: font.extraBold, color: C.text },
+  profileEmail:   { fontSize: 13, fontFamily: font.regular, color: C.muted, marginTop: 1 },
   statsRow:       { flexDirection: 'row', gap: sp.sm, marginTop: sp.xs },
   statChip:       { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.bg, paddingHorizontal: sp.sm, paddingVertical: 3, borderRadius: r.full },
-  statChipText:   { fontSize: 11, fontWeight: '600', color: C.muted },
-  sectionTitle:   { fontSize: 13, fontWeight: '700', color: C.muted, letterSpacing: 0.5, marginBottom: sp.sm, marginLeft: sp.xs, textTransform: 'uppercase' },
-  label:          { fontSize: 13, fontWeight: '600', color: C.muted, marginBottom: 6, marginTop: sp.sm },
-  input:          { backgroundColor: C.bg, borderRadius: r.md, borderWidth: 1, borderColor: C.border, paddingHorizontal: sp.md, paddingVertical: 10, fontSize: 15, color: C.text },
-  hint:           { fontSize: 11, color: C.light, marginTop: 6 },
-  saveBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: sp.xs, backgroundColor: C.accent, paddingVertical: 13, borderRadius: r.md, marginTop: sp.md },
-  saveText:       { color: C.white, fontSize: 15, fontWeight: '700' },
+  statChipText:   { fontSize: 11, fontFamily: font.semiBold, color: C.muted },
+  sectionTitle:   { ...type.sectionTitle, marginBottom: sp.sm, marginLeft: sp.xs, marginTop: sp.xs },
+  label:          { fontSize: 13, fontFamily: font.semiBold, color: C.muted, marginBottom: 6, marginTop: sp.sm },
+  input:          { backgroundColor: 'rgba(253,245,245,0.78)', borderRadius: r.md, borderWidth: 1, borderColor: C.border, paddingHorizontal: sp.md, paddingVertical: 10, fontSize: 15, fontFamily: font.regular, color: C.text },
+  hint:           { fontSize: 11, fontFamily: font.regular, color: C.light, marginTop: 6 },
+  saveBtn:        { gap: sp.xs, paddingVertical: 13 },
+  saveText:       { color: C.white, fontSize: 15, fontFamily: font.bold },
   prefRow:        { flexDirection: 'row', alignItems: 'center' },
-  prefLabel:      { fontSize: 14, fontWeight: '600', color: C.text },
-  prefSub:        { fontSize: 12, color: C.muted, marginTop: 1 },
+  prefLabel:      { fontSize: 14, fontFamily: font.semiBold, color: C.text },
+  prefSub:        { fontSize: 12, fontFamily: font.regular, color: C.muted, marginTop: 1 },
   linkRow:        { flexDirection: 'row', alignItems: 'center', gap: sp.sm, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border },
-  linkLabel:      { flex: 1, fontSize: 14, fontWeight: '600', color: C.text },
+  linkLabel:      { flex: 1, fontSize: 14, fontFamily: font.semiBold, color: C.text },
   aboutRow:       { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border },
-  aboutKey:       { fontSize: 13, color: C.muted },
-  aboutVal:       { fontSize: 13, fontWeight: '600', color: C.text, maxWidth: '65%', textAlign: 'right' },
+  aboutKey:       { fontSize: 13, fontFamily: font.regular, color: C.muted },
+  aboutVal:       { fontSize: 13, fontFamily: font.semiBold, color: C.text, maxWidth: '65%', textAlign: 'right' },
   logoutBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: sp.xs, backgroundColor: C.danger + '15', paddingVertical: 14, borderRadius: r.lg, marginTop: sp.xs },
-  logoutText:     { fontSize: 15, fontWeight: '700', color: C.danger },
+  logoutText:     { fontSize: 15, fontFamily: font.bold, color: C.danger },
 });

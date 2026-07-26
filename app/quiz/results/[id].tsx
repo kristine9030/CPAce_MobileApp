@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
-import { C, sp, r, sh } from '@/constants/cpace-theme';
+import { C, sp, r, sh, font, type, grad } from '@/constants/cpace-theme';
+import { GradientButton, GradientFill } from '@/components/ui/gradient';
 
 interface Results {
   session_id: number;
@@ -19,15 +20,15 @@ interface Results {
   points_earned: number;
   time_taken_seconds: number;
   passed: boolean;
-  by_topic: Array<{ topic: string; correct: number; total: number; accuracy: number }>;
-  question_details: Array<{
+  by_topic: { topic: string; correct: number; total: number; accuracy: number }[];
+  question_details: {
     item_number: number;
     question_text: string;
     your_answer: string | null;
     correct_answer: string;
     is_correct: boolean;
     explanation: string | null;
-  }>;
+  }[];
 }
 
 export default function QuizResultsScreen() {
@@ -59,9 +60,9 @@ export default function QuizResultsScreen() {
       <SafeAreaView style={s.safe}>
         <View style={s.center}>
           <Text style={s.errorText}>Results not available.</Text>
-          <TouchableOpacity style={s.backBtn} onPress={() => router.replace('/(tabs)')}>
+          <GradientButton radius={r.lg} contentStyle={s.backBtn} onPress={() => router.replace('/(tabs)')}>
             <Text style={s.backBtnText}>Go to Dashboard</Text>
-          </TouchableOpacity>
+          </GradientButton>
         </View>
       </SafeAreaView>
     );
@@ -69,23 +70,22 @@ export default function QuizResultsScreen() {
 
   const pct    = Math.round(results.score_percent);
   const passed = results.passed;
-  const scoreColor = passed ? C.success : pct >= 60 ? C.accent : C.danger;
 
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => router.replace('/(tabs)')}>
-          <Ionicons name="home" size={24} color={C.white} />
+          <Ionicons name="home" size={24} color={C.text} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Quiz Results</Text>
         <TouchableOpacity onPress={() => router.push('/(tabs)/quizzes')}>
-          <Ionicons name="refresh" size={24} color={C.white} />
+          <Ionicons name="refresh" size={24} color={C.text} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: sp.xl }}>
         {/* Score Card */}
-        <View style={[s.scoreCard, { backgroundColor: passed ? C.success : C.danger }]}>
+        <GradientFill colors={passed ? grad.success : grad.danger} style={s.scoreCard}>
           <Text style={s.scoreLabel}>{passed ? '🎉 PASSED' : '📚 KEEP STUDYING'}</Text>
           <Text style={s.scorePct}>{pct}%</Text>
           <Text style={s.scoreDetail}>{results.correct_answers} / {results.total_items} correct</Text>
@@ -95,7 +95,7 @@ export default function QuizResultsScreen() {
               <Text style={s.pointsText}>+{results.points_earned} points</Text>
             </View>
           )}
-        </View>
+        </GradientFill>
 
         {/* Stats Row */}
         <View style={s.statsRow}>
@@ -139,21 +139,32 @@ export default function QuizResultsScreen() {
             {!qd.is_correct && qd.your_answer && (
               <Text style={s.qdYours}>Your answer: <Text style={{ color: C.danger }}>{qd.your_answer}</Text></Text>
             )}
-            <Text style={s.qdCorrect}>Correct: <Text style={{ color: C.success, fontWeight: '700' }}>{qd.correct_answer}</Text></Text>
+            <Text style={s.qdCorrect}>Correct: <Text style={{ color: C.success, fontFamily: font.bold }}>{qd.correct_answer}</Text></Text>
             {qd.explanation && <Text style={s.qdExpl}>{qd.explanation}</Text>}
           </View>
         ))}
 
         {/* Actions */}
         <View style={s.actionsRow}>
-          <TouchableOpacity style={[s.actionBtn, { backgroundColor: C.accent }]} onPress={() => router.push('/(tabs)/quizzes')}>
+          <GradientButton
+            radius={r.lg}
+            colors={grad.brandSoft}
+            style={{ flex: 1 }}
+            contentStyle={s.actionBtn}
+            onPress={() => router.push('/(tabs)/quizzes')}
+          >
             <Ionicons name="refresh" size={18} color={C.white} />
             <Text style={s.actionBtnText}>New Quiz</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.actionBtn, { backgroundColor: C.primary }]} onPress={() => router.replace('/(tabs)')}>
+          </GradientButton>
+          <GradientButton
+            radius={r.lg}
+            style={{ flex: 1 }}
+            contentStyle={s.actionBtn}
+            onPress={() => router.replace('/(tabs)')}
+          >
             <Ionicons name="home" size={18} color={C.white} />
             <Text style={s.actionBtnText}>Dashboard</Text>
-          </TouchableOpacity>
+          </GradientButton>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -179,36 +190,36 @@ function fmtSec(s: number) {
 const s = StyleSheet.create({
   safe:        { flex: 1, backgroundColor: C.bg },
   center:      { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg, gap: sp.md },
-  errorText:   { fontSize: 16, color: C.muted },
-  header:      { backgroundColor: C.primary, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: sp.lg, paddingVertical: sp.md },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: C.white },
-  scoreCard:   { margin: sp.md, borderRadius: r.xl, padding: sp.xl, alignItems: 'center', ...sh.md },
-  scoreLabel:  { fontSize: 16, fontWeight: '800', color: C.white, marginBottom: sp.sm },
-  scorePct:    { fontSize: 56, fontWeight: '900', color: C.white },
-  scoreDetail: { fontSize: 16, color: 'rgba(255,255,255,0.8)', marginTop: sp.xs },
+  errorText:   { fontSize: 16, fontFamily: font.regular, color: C.muted },
+  header:      { backgroundColor: C.bg, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: sp.lg, paddingVertical: sp.md },
+  headerTitle: { fontSize: 17, fontFamily: font.semiBold, color: C.text },
+  scoreCard:   { margin: sp.md, borderRadius: r.xl, padding: sp.xl, alignItems: 'center', },
+  scoreLabel:  { fontSize: 16, fontFamily: font.extraBold, color: C.white, marginBottom: sp.sm },
+  scorePct:    { fontSize: 56, fontFamily: font.black, color: C.white },
+  scoreDetail: { fontSize: 16, fontFamily: font.regular, color: 'rgba(255,255,255,0.8)', marginTop: sp.xs },
   pointsBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: sp.md, paddingVertical: sp.xs, borderRadius: r.full, marginTop: sp.sm },
-  pointsText:  { color: C.white, fontWeight: '700', fontSize: 14 },
+  pointsText:  { color: C.white, fontFamily: font.bold, fontSize: 14 },
   statsRow:    { flexDirection: 'row', marginHorizontal: sp.md, gap: sp.sm, marginBottom: sp.sm },
-  statBox:     { flex: 1, backgroundColor: C.card, borderRadius: r.lg, padding: sp.sm, alignItems: 'center' },
-  statVal:     { fontSize: 20, fontWeight: '800' },
-  statLabel:   { fontSize: 11, color: C.muted, marginTop: 2 },
-  card:        { backgroundColor: C.card, borderRadius: r.lg, padding: sp.md, marginHorizontal: sp.md, marginBottom: sp.sm },
-  sectionTitle:{ fontSize: 15, fontWeight: '700', color: C.text },
+  statBox:     { flex: 1, backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.sm, alignItems: 'center', },
+  statVal:     { fontSize: 20, fontFamily: font.extraBold },
+  statLabel:   { fontSize: 11, fontFamily: font.medium, color: C.muted, marginTop: 2 },
+  card:        { backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.md, marginHorizontal: sp.md, marginBottom: sp.sm, },
+  sectionTitle:{ ...type.sectionTitle },
   topicRow:    { flexDirection: 'row', alignItems: 'center', marginTop: sp.xs },
-  topicName:   { width: 100, fontSize: 12, color: C.muted },
+  topicName:   { width: 100, fontSize: 12, fontFamily: font.regular, color: C.muted },
   topicBarBg:  { flex: 1, height: 6, backgroundColor: C.border, borderRadius: 3, marginHorizontal: sp.xs, overflow: 'hidden' },
   topicBarFill:{ height: 6, borderRadius: 3 },
-  topicPct:    { width: 36, fontSize: 12, fontWeight: '700', textAlign: 'right', color: C.text },
+  topicPct:    { width: 36, fontSize: 12, fontFamily: font.bold, textAlign: 'right', color: C.text },
   qdTop:       { flexDirection: 'row', alignItems: 'center', gap: sp.xs, marginBottom: sp.xs },
   qdBadge:     { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
-  qdNum:       { fontSize: 12, fontWeight: '700', color: C.muted },
-  qdText:      { fontSize: 14, fontWeight: '600', color: C.text, marginBottom: sp.xs },
-  qdYours:     { fontSize: 13, color: C.muted, marginBottom: 2 },
-  qdCorrect:   { fontSize: 13, color: C.muted, marginBottom: sp.xs },
-  qdExpl:      { fontSize: 13, color: C.muted, fontStyle: 'italic', marginTop: sp.xs, borderTopWidth: 1, borderTopColor: C.border, paddingTop: sp.xs },
+  qdNum:       { fontSize: 12, fontFamily: font.bold, color: C.muted },
+  qdText:      { fontSize: 14, fontFamily: font.semiBold, color: C.text, marginBottom: sp.xs },
+  qdYours:     { fontSize: 13, fontFamily: font.regular, color: C.muted, marginBottom: 2 },
+  qdCorrect:   { fontSize: 13, fontFamily: font.regular, color: C.muted, marginBottom: sp.xs },
+  qdExpl:      { fontSize: 13, fontFamily: font.regular, color: C.muted, fontStyle: 'italic', marginTop: sp.xs, borderTopWidth: 1, borderTopColor: C.border, paddingTop: sp.xs },
   actionsRow:  { flexDirection: 'row', margin: sp.md, gap: sp.sm },
-  actionBtn:   { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: sp.xs, paddingVertical: 14, borderRadius: r.lg },
-  actionBtnText:{ color: C.white, fontWeight: '700', fontSize: 15 },
-  backBtn:     { backgroundColor: C.accent, paddingHorizontal: sp.xl, paddingVertical: sp.md, borderRadius: r.lg },
-  backBtnText: { color: C.white, fontWeight: '700' },
+  actionBtn:   { gap: sp.xs, paddingVertical: 14 },
+  actionBtnText:{ color: C.white, fontFamily: font.bold, fontSize: 15 },
+  backBtn:     { paddingHorizontal: sp.xl, paddingVertical: sp.md },
+  backBtnText: { color: C.white, fontFamily: font.bold },
 });

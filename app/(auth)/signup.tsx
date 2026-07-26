@@ -176,23 +176,16 @@ export default function SignupScreen() {
               {/* Divider */}
               <View style={s.divider}>
                 <View style={s.dividerLine} />
-                <Text style={s.dividerText}>or sign up with</Text>
+                <Text style={s.dividerText}>or</Text>
                 <View style={s.dividerLine} />
               </View>
 
-              {/* Social buttons */}
-              <View style={s.socialRow}>
-                <TouchableOpacity style={s.socialBtn} activeOpacity={0.75}
-                  onPress={() => Alert.alert('Coming Soon', 'Google sign-up will be available soon.')}>
-                  <Image source={{ uri: 'https://www.gstatic.com/images/branding/googleg/2x/googleg_standard_color_128dp.png' }} style={s.socialLogo} />
-                  <Text style={s.socialText}>Google</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.socialBtn} activeOpacity={0.75}
-                  onPress={() => Alert.alert('Coming Soon', 'Microsoft sign-up will be available soon.')}>
-                  <Image source={{ uri: 'https://img.icons8.com/color/96/microsoft.png' }} style={s.socialLogo} />
-                  <Text style={s.socialText}>Microsoft</Text>
-                </TouchableOpacity>
-              </View>
+              {/* Google sign-up */}
+              <TouchableOpacity style={s.googleBtn} activeOpacity={0.8}
+                onPress={() => Alert.alert('Coming Soon', 'Google sign-up will be available soon.')}>
+                <Image source={{ uri: 'https://www.gstatic.com/images/branding/googleg/2x/googleg_standard_color_128dp.png' }} style={s.socialLogo} />
+                <Text style={s.socialText}>Continue with Google</Text>
+              </TouchableOpacity>
 
               {/* Sign in link */}
               <View style={s.linkRow}>
@@ -255,15 +248,14 @@ const s = StyleSheet.create({
   dividerLine: { flex: 1, height: 1, backgroundColor: '#E5E5E5' },
   dividerText: { fontSize: 12, fontFamily: F.regular, color: C.muted },
 
-  // Social
-  socialRow: { flexDirection: 'row', gap: 12 },
-  socialBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 13, borderRadius: 12,
+  // Google
+  googleBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, paddingVertical: 14, borderRadius: 12,
     backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E5E5E5',
   },
   socialLogo: { width: 20, height: 20, resizeMode: 'contain' },
-  socialText: { fontSize: 14, fontFamily: F.semiBold, color: C.text },
+  socialText: { fontSize: 15, fontFamily: F.semiBold, color: C.text },
 
   // Link
   linkRow:  { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 22 },

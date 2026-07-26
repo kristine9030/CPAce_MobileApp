@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, Pressable,
-  ScrollView, Dimensions, Keyboard, Platform, ActivityIndicator,
+  ScrollView, Dimensions, Keyboard, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import client from '@/lib/api/client';
 import { C, r, sh } from '@/constants/cpace-theme';
+import { GradientButton, GradientFill } from '@/components/ui/gradient';
 import { useAiTutor } from '@/lib/context/ai-tutor-context';
 import { MarkdownLite } from './markdown-lite';
 
@@ -155,7 +156,9 @@ export function AiTutorWidget() {
           activeOpacity={0.85}
           onPress={open}
         >
-          <Ionicons name="sparkles" size={26} color={C.white} />
+          <GradientFill style={s.fabFill}>
+            <Ionicons name="sparkles" size={26} color={C.white} />
+          </GradientFill>
         </TouchableOpacity>
       )}
 
@@ -219,20 +222,24 @@ export function AiTutorWidget() {
                     multiline
                     maxLength={2000}
                   />
-                  <TouchableOpacity
-                    style={[s.sendBtn, (!input.trim() || sending) && { opacity: 0.5 }]}
+                  <GradientButton
+                    radius={18}
+                    contentStyle={s.sendBtn}
                     onPress={() => send()}
-                    disabled={!input.trim() || sending}
+                    disabled={!input.trim()}
+                    loading={sending}
                   >
-                    {sending ? <ActivityIndicator size="small" color={C.white} /> : <Ionicons name="send" size={16} color={C.white} />}
-                  </TouchableOpacity>
+                    <Ionicons name="send" size={16} color={C.white} />
+                  </GradientButton>
                 </View>
               </View>
             </Animated.View>
 
             <Animated.View style={[s.fab, { right: 20 }, sh.md, closeFabStyle]}>
               <TouchableOpacity style={s.fabTouch} activeOpacity={0.85} onPress={close}>
-                <Ionicons name="close" size={26} color={C.white} />
+                <GradientFill style={s.fabFill}>
+                  <Ionicons name="close" size={26} color={C.white} />
+                </GradientFill>
               </TouchableOpacity>
             </Animated.View>
           </View>
@@ -248,10 +255,17 @@ const s = StyleSheet.create({
     width: FAB_SIZE,
     height: FAB_SIZE,
     borderRadius: FAB_SIZE / 2,
-    backgroundColor: C.primary,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 50,
+  },
+  fabFill: {
+    width: '100%',
+    height: '100%',
+    borderRadius: FAB_SIZE / 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
   },
   fabTouch: {
     width: '100%',
@@ -283,14 +297,14 @@ const s = StyleSheet.create({
   headTitle: { color: C.white, fontFamily: 'Poppins_700Bold', fontSize: 14 },
   headSub: { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontFamily: 'Poppins_400Regular' },
   headBtn: { padding: 4 },
-  body: { flex: 1, backgroundColor: '#faf6f6' },
+  body: { flex: 1, backgroundColor: '#F8F9FA' },
   bubbleWrap: { maxWidth: '85%' },
   bubbleWrapUser: { alignSelf: 'flex-end' },
   bubbleWrapBot: { alignSelf: 'flex-start' },
   bubble: { borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9 },
   bubbleUser: { backgroundColor: C.primary, borderBottomRightRadius: 3 },
   bubbleBot: { backgroundColor: C.white, borderWidth: 1, borderColor: '#eee', borderBottomLeftRadius: 3 },
-  bubbleError: { borderColor: C.danger, backgroundColor: '#fdf0f0' },
+  bubbleError: { borderColor: C.danger, backgroundColor: '#F3F4F6' },
   bubbleUserText: { color: C.white, fontSize: 14, lineHeight: 20, fontFamily: 'Poppins_400Regular' },
   providerTag: { fontSize: 10, color: C.light, marginTop: 2, marginLeft: 4 },
   foot: {
@@ -314,9 +328,8 @@ const s = StyleSheet.create({
     fontFamily: 'Poppins_400Regular',
   },
   sendBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: C.primary,
-    justifyContent: 'center', alignItems: 'center',
+    width: 36, height: 36,
+    paddingVertical: 0, paddingHorizontal: 0,
   },
   typingRow: { flexDirection: 'row', gap: 4, paddingVertical: 2 },
   typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.light },

@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/context/auth-context';
-import { C, sp, r, sh } from '@/constants/cpace-theme';
+import { C, sp, r, sh, font } from '@/constants/cpace-theme';
+import { ScreenHeader } from '@/components/ui/screen-header';
 
 // Achievements are computed from auth user data (no dedicated API endpoint).
 // They display based on the user's streak, points, and total stats.
@@ -96,26 +96,22 @@ export default function AchievementsScreen() {
   const unlocked      = achievements.filter(a => a.unlocked).length;
 
   return (
-    <SafeAreaView style={s.safe}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={{ width: 40 }}>
-          <Ionicons name="arrow-back" size={24} color={C.white} />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>Achievements</Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <ScreenHeader title="Achievements" onBack={() => router.back()} />
 
       {/* Summary */}
-      <View style={s.summary}>
-        <View style={s.summaryCircle}>
-          <Text style={s.summaryBig}>{unlocked}</Text>
-          <Text style={s.summaryOf}>/ {achievements.length}</Text>
-        </View>
-        <View style={{ marginLeft: sp.lg }}>
-          <Text style={s.summaryTitle}>Unlocked</Text>
-          <Text style={s.summarySub}>{achievements.length - unlocked} more to go</Text>
-          <View style={s.progressBg}>
-            <View style={[s.progressFill, { width: `${(unlocked / achievements.length) * 100}%` }]} />
+      <View style={s.summaryWrap}>
+        <View style={s.summary}>
+          <View style={s.summaryCircle}>
+            <Text style={s.summaryBig}>{unlocked}</Text>
+            <Text style={s.summaryOf}>/ {achievements.length}</Text>
+          </View>
+          <View style={{ marginLeft: sp.lg }}>
+            <Text style={s.summaryTitle}>Unlocked</Text>
+            <Text style={s.summarySub}>{achievements.length - unlocked} more to go</Text>
+            <View style={s.progressBg}>
+              <View style={[s.progressFill, { width: `${(unlocked / achievements.length) * 100}%` }]} />
+            </View>
           </View>
         </View>
       </View>
@@ -127,17 +123,19 @@ export default function AchievementsScreen() {
         numColumns={2}
         columnWrapperStyle={{ gap: sp.sm }}
         renderItem={({ item }) => (
-          <View style={[s.card, sh.sm, !item.unlocked && s.cardLocked]}>
-            <View style={[s.iconCircle, { backgroundColor: item.unlocked ? item.color + '20' : C.border }]}>
-              <Ionicons name={item.icon as any} size={28} color={item.unlocked ? item.color : C.light} />
-            </View>
-            <Text style={[s.achTitle, !item.unlocked && s.lockedText]}>{item.title}</Text>
-            <Text style={s.achDesc} numberOfLines={2}>{item.description}</Text>
-            {!item.unlocked && (
-              <View style={s.lockBadge}>
-                <Ionicons name="lock-closed" size={12} color={C.light} />
+          <View style={[s.cardWrap, !item.unlocked && s.cardLocked]}>
+            <View style={s.card}>
+              <View style={[s.iconCircle, { backgroundColor: item.unlocked ? item.color + '20' : C.border }]}>
+                <Ionicons name={item.icon as any} size={28} color={item.unlocked ? item.color : C.light} />
               </View>
-            )}
+              <Text style={[s.achTitle, !item.unlocked && s.lockedText]}>{item.title}</Text>
+              <Text style={s.achDesc} numberOfLines={2}>{item.description}</Text>
+              {!item.unlocked && (
+                <View style={s.lockBadge}>
+                  <Ionicons name="lock-closed" size={12} color={C.light} />
+                </View>
+              )}
+            </View>
           </View>
         )}
       />
@@ -147,21 +145,21 @@ export default function AchievementsScreen() {
 
 const s = StyleSheet.create({
   safe:          { flex: 1, backgroundColor: C.bg },
-  header:        { backgroundColor: C.primary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: sp.lg, paddingVertical: sp.md },
-  headerTitle:   { flex: 1, fontSize: 18, fontWeight: '700', color: C.white, textAlign: 'center' },
-  summary:       { flexDirection: 'row', alignItems: 'center', backgroundColor: C.primary, paddingHorizontal: sp.lg, paddingBottom: sp.lg },
-  summaryCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', flexDirection: 'row' },
-  summaryBig:    { fontSize: 28, fontWeight: '900', color: C.white },
-  summaryOf:     { fontSize: 14, color: 'rgba(255,255,255,0.6)', alignSelf: 'flex-end', marginBottom: 4 },
-  summaryTitle:  { fontSize: 18, fontWeight: '700', color: C.white },
-  summarySub:    { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  progressBg:    { width: 160, height: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 3, marginTop: sp.sm, overflow: 'hidden' },
+  summaryWrap:   { borderRadius: r.lg, marginHorizontal: sp.md, marginBottom: sp.sm, overflow: 'hidden', },
+  summary:       { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.md, overflow: 'hidden' },
+  summaryCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.primary, justifyContent: 'center', alignItems: 'center', flexDirection: 'row' },
+  summaryBig:    { fontSize: 28, fontFamily: font.extraBold, color: C.white },
+  summaryOf:     { fontSize: 14, fontFamily: font.medium, color: 'rgba(255,255,255,0.7)', alignSelf: 'flex-end', marginBottom: 4 },
+  summaryTitle:  { fontSize: 17, fontFamily: font.bold, color: C.text },
+  summarySub:    { fontSize: 13, fontFamily: font.regular, color: C.muted, marginTop: 2 },
+  progressBg:    { width: 160, height: 6, backgroundColor: C.border, borderRadius: 3, marginTop: sp.sm, overflow: 'hidden' },
   progressFill:  { height: 6, backgroundColor: C.accent, borderRadius: 3 },
-  card:          { flex: 1, backgroundColor: C.card, borderRadius: r.lg, padding: sp.md, alignItems: 'center', marginBottom: sp.sm, position: 'relative' },
+  cardWrap:      { flex: 1, borderRadius: r.lg, marginBottom: sp.sm, overflow: 'hidden', },
+  card:          { backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.md, alignItems: 'center', overflow: 'hidden', position: 'relative' },
   cardLocked:    { opacity: 0.6 },
   iconCircle:    { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: sp.sm },
-  achTitle:      { fontSize: 13, fontWeight: '700', color: C.text, textAlign: 'center' },
+  achTitle:      { fontSize: 13, fontFamily: font.bold, color: C.text, textAlign: 'center' },
   lockedText:    { color: C.muted },
-  achDesc:       { fontSize: 11, color: C.muted, textAlign: 'center', marginTop: sp.xs },
+  achDesc:       { fontSize: 11, fontFamily: font.regular, color: C.muted, textAlign: 'center', marginTop: sp.xs },
   lockBadge:     { position: 'absolute', top: sp.sm, right: sp.sm },
 });

@@ -8,7 +8,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
-import { C, sp, r, sh } from '@/constants/cpace-theme';
+import { C, sp, r, sh, font, grad } from '@/constants/cpace-theme';
+import { ScreenHeader } from '@/components/ui/screen-header';
+import { GradientButton, GradientFill } from '@/components/ui/gradient';
 import { useAiTutor } from '@/lib/context/ai-tutor-context';
 
 interface Note {
@@ -141,21 +143,17 @@ export default function NotesScreen() {
   }
 
   return (
-    <SafeAreaView style={s.safe}>
-      <View style={s.header}>
-        <View style={s.headerLeft}>
-          <TouchableOpacity onPress={() => router.push('/(tabs)')} style={s.backBtn}>
-            <Ionicons name="arrow-back" size={22} color={C.white} />
-          </TouchableOpacity>
-          <View>
-            <Text style={s.title}>Review Notes</Text>
-            <Text style={s.sub}>{notes.length} notes</Text>
-          </View>
-        </View>
-        <TouchableOpacity style={s.addBtn} onPress={openCreate}>
-          <Ionicons name="add" size={24} color={C.white} />
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <ScreenHeader
+        title="Review Notes"
+        subtitle={`${notes.length} note${notes.length === 1 ? '' : 's'}`}
+        onBack={() => router.push('/(tabs)')}
+        right={
+          <GradientButton radius={20} contentStyle={s.addBtn} onPress={openCreate}>
+            <Ionicons name="add" size={24} color={C.white} />
+          </GradientButton>
+        }
+      />
 
       {/* Search + Filter */}
       <View style={s.searchRow}>
@@ -169,9 +167,15 @@ export default function NotesScreen() {
             placeholderTextColor={C.light}
           />
         </View>
-        <TouchableOpacity style={[s.favToggle, favOnly && { backgroundColor: C.warning }]} onPress={toggleFav}>
-          <Ionicons name={favOnly ? 'star' : 'star-outline'} size={18} color={favOnly ? C.white : C.muted} />
-        </TouchableOpacity>
+        {favOnly ? (
+          <GradientButton radius={r.md} contentStyle={s.favToggleActive} onPress={toggleFav}>
+            <Ionicons name="star" size={18} color={C.white} />
+          </GradientButton>
+        ) : (
+          <TouchableOpacity style={s.favToggle} onPress={toggleFav}>
+            <Ionicons name="star-outline" size={18} color={C.muted} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <FlatList
@@ -180,27 +184,31 @@ export default function NotesScreen() {
         contentContainerStyle={{ padding: sp.md }}
         refreshControl={<RefreshControl refreshing={refresh} onRefresh={() => load(true)} tintColor={C.accent} />}
         renderItem={({ item }) => (
-          <TouchableOpacity style={[s.card, sh.sm]} activeOpacity={0.8} onPress={() => setViewing(item)}>
-            <View style={s.cardTop}>
-              <Text style={s.noteTile} numberOfLines={1}>{item.title}</Text>
-              <TouchableOpacity onPress={() => toggleNoteFav(item)}>
-                <Ionicons name={item.is_favorite ? 'star' : 'star-outline'} size={18} color={item.is_favorite ? C.warning : C.light} />
-              </TouchableOpacity>
-            </View>
-            {item.subject_code && (
-              <View style={s.badge}><Text style={s.badgeText}>{item.subject_code}</Text></View>
-            )}
-            <Text style={s.content} numberOfLines={3}>{item.content}</Text>
-            <Text style={s.date}>{item.created_on ?? ''}</Text>
-            <View style={s.actions}>
-              <TouchableOpacity style={s.actionBtn} onPress={() => openEdit(item)}>
-                <Ionicons name="pencil" size={16} color={C.accent} />
-                <Text style={[s.actionText, { color: C.accent }]}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.actionBtn} onPress={() => del(item.id)}>
-                <Ionicons name="trash" size={16} color={C.danger} />
-                <Text style={[s.actionText, { color: C.danger }]}>Delete</Text>
-              </TouchableOpacity>
+          <TouchableOpacity style={[s.cardWrap]} activeOpacity={0.8} onPress={() => setViewing(item)}>
+            <View style={s.card}>
+              <View style={s.cardTop}>
+                <Text style={s.noteTile} numberOfLines={1}>{item.title}</Text>
+                <TouchableOpacity onPress={() => toggleNoteFav(item)}>
+                  <Ionicons name={item.is_favorite ? 'star' : 'star-outline'} size={18} color={item.is_favorite ? C.warning : C.light} />
+                </TouchableOpacity>
+              </View>
+              {item.subject_code && (
+                <GradientFill colors={grad.brandSoft} style={s.badge}>
+                  <Text style={s.badgeText}>{item.subject_code}</Text>
+                </GradientFill>
+              )}
+              <Text style={s.content} numberOfLines={3}>{item.content}</Text>
+              <Text style={s.date}>{item.created_on ?? ''}</Text>
+              <View style={s.actions}>
+                <TouchableOpacity style={s.actionBtn} onPress={() => openEdit(item)}>
+                  <Ionicons name="pencil" size={16} color={C.accent} />
+                  <Text style={[s.actionText, { color: C.accent }]}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.actionBtn} onPress={() => del(item.id)}>
+                  <Ionicons name="trash" size={16} color={C.danger} />
+                  <Text style={[s.actionText, { color: C.danger }]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </TouchableOpacity>
         )}
@@ -277,11 +285,16 @@ export default function NotesScreen() {
           </ScrollView>
           {selectedText.length > 0 && (
             <View style={[s.selectionBar, sh.md]}>
-              <TouchableOpacity style={s.selectionBtn} onPress={askAboutSelection}>
+              <GradientButton
+                radius={r.md}
+                style={{ flex: 1 }}
+                contentStyle={s.selectionBtn}
+                onPress={askAboutSelection}
+              >
                 <Ionicons name="sparkles" size={16} color={C.white} />
                 <Text style={s.selectionBtnText}>Ask AI</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.selectionBtn, { backgroundColor: '#374151' }]} onPress={searchSelectionOnline}>
+              </GradientButton>
+              <TouchableOpacity style={[s.selectionBtn, s.selectionBtnAlt]} onPress={searchSelectionOnline}>
                 <Ionicons name="search" size={16} color={C.white} />
                 <Text style={s.selectionBtnText}>Search</Text>
               </TouchableOpacity>
@@ -297,42 +310,40 @@ export default function NotesScreen() {
 const s = StyleSheet.create({
   safe:         { flex: 1, backgroundColor: C.bg },
   center:       { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
-  header:       { backgroundColor: C.primary, paddingHorizontal: sp.lg, paddingVertical: sp.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerLeft:   { flexDirection: 'row', alignItems: 'center' },
-  backBtn:      { width: 32, marginRight: sp.xs },
-  title:        { fontSize: 24, fontWeight: '800', color: C.white },
-  sub:          { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
-  addBtn:       { width: 40, height: 40, borderRadius: 20, backgroundColor: C.accent, justifyContent: 'center', alignItems: 'center' },
+  addBtn:       { width: 40, height: 40, paddingVertical: 0, paddingHorizontal: 0 },
   searchRow:    { flexDirection: 'row', padding: sp.md, gap: sp.sm },
-  searchBox:    { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: r.md, paddingHorizontal: sp.sm, borderWidth: 1, borderColor: C.border },
-  searchInput:  { flex: 1, paddingVertical: 10, fontSize: 14, color: C.text },
-  favToggle:    { width: 44, height: 44, borderRadius: r.md, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, justifyContent: 'center', alignItems: 'center' },
-  card:         { backgroundColor: C.card, borderRadius: r.lg, padding: sp.md, marginBottom: sp.sm },
+  searchBox:    { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.md, paddingHorizontal: sp.sm, borderWidth: 1, borderColor: C.border },
+  searchInput:  { flex: 1, paddingVertical: 10, fontSize: 14, fontFamily: font.regular, color: C.text },
+  favToggle:    { width: 44, height: 44, borderRadius: r.md, backgroundColor: 'rgba(255,255,255,0.78)', borderWidth: 1, borderColor: C.border, justifyContent: 'center', alignItems: 'center' },
+  favToggleActive: { width: 44, height: 44, paddingVertical: 0, paddingHorizontal: 0 },
+  cardWrap:     { borderRadius: r.lg, marginBottom: sp.sm, overflow: 'hidden', },
+  card:         { backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.md, overflow: 'hidden' },
   cardTop:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  noteTile:     { flex: 1, fontSize: 15, fontWeight: '700', color: C.text, marginRight: sp.sm },
-  badge:        { alignSelf: 'flex-start', backgroundColor: C.accent + '20', paddingHorizontal: sp.sm, paddingVertical: 2, borderRadius: r.sm, marginTop: sp.xs },
-  badgeText:    { fontSize: 11, fontWeight: '700', color: C.accent },
-  content:      { fontSize: 14, color: C.muted, marginTop: sp.xs, lineHeight: 20 },
-  date:         { fontSize: 11, color: C.light, marginTop: sp.xs },
+  noteTile:     { flex: 1, fontSize: 15, fontFamily: font.bold, color: C.text, marginRight: sp.sm },
+  badge:        { alignSelf: 'flex-start', paddingHorizontal: sp.sm, paddingVertical: 3, borderRadius: r.sm, marginTop: sp.xs, overflow: 'hidden' },
+  badgeText:    { fontSize: 11, fontFamily: font.bold, color: C.white },
+  content:      { fontSize: 14, fontFamily: font.regular, color: C.muted, marginTop: sp.xs, lineHeight: 20 },
+  date:         { fontSize: 11, fontFamily: font.regular, color: C.light, marginTop: sp.xs },
   actions:      { flexDirection: 'row', gap: sp.md, marginTop: sp.sm, borderTopWidth: 1, borderTopColor: C.border, paddingTop: sp.xs },
   actionBtn:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionText:   { fontSize: 13, fontWeight: '600' },
+  actionText:   { fontSize: 13, fontFamily: font.semiBold },
   emptyBox:     { alignItems: 'center', paddingTop: 60, gap: sp.md },
-  emptyText:    { fontSize: 14, color: C.muted, textAlign: 'center' },
+  emptyText:    { fontSize: 14, fontFamily: font.regular, color: C.muted, textAlign: 'center' },
   modalHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: sp.lg, borderBottomWidth: 1, borderBottomColor: C.border },
-  modalCancel:  { fontSize: 16, color: C.muted },
-  modalTitle:   { fontSize: 17, fontWeight: '700', color: C.text },
-  modalSave:    { fontSize: 16, fontWeight: '700', color: C.accent },
-  formLabel:    { fontSize: 13, fontWeight: '600', color: C.muted, marginBottom: 6, marginTop: sp.sm },
-  formInput:    { backgroundColor: C.card, borderRadius: r.md, borderWidth: 1, borderColor: C.border, paddingHorizontal: sp.md, paddingVertical: 12, fontSize: 15, color: C.text },
+  modalCancel:  { fontSize: 16, fontFamily: font.regular, color: C.muted },
+  modalTitle:   { fontSize: 17, fontFamily: font.bold, color: C.text },
+  modalSave:    { fontSize: 16, fontFamily: font.bold, color: C.accent },
+  formLabel:    { fontSize: 13, fontFamily: font.semiBold, color: C.muted, marginBottom: 6, marginTop: sp.sm },
+  formInput:    { backgroundColor: C.card, borderRadius: r.md, borderWidth: 1, borderColor: C.border, paddingHorizontal: sp.md, paddingVertical: 12, fontSize: 15, fontFamily: font.regular, color: C.text },
   formTextarea: { height: 200, paddingTop: 12 },
-  viewHint:     { fontSize: 12, color: C.muted, paddingHorizontal: sp.lg, paddingTop: sp.sm, fontStyle: 'italic' },
-  viewContent:  { fontSize: 15, color: C.text, lineHeight: 22 },
+  viewHint:     { fontSize: 12, fontFamily: font.regular, color: C.muted, paddingHorizontal: sp.lg, paddingTop: sp.sm, fontStyle: 'italic' },
+  viewContent:  { fontSize: 15, fontFamily: font.regular, color: C.text, lineHeight: 22 },
   selectionBar: {
     position: 'absolute', bottom: 24, left: sp.lg, right: sp.lg,
     flexDirection: 'row', gap: sp.sm, backgroundColor: '#1f2937',
     borderRadius: r.lg, padding: sp.sm,
   },
-  selectionBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.accent, borderRadius: r.md, paddingVertical: 10 },
-  selectionBtnText: { color: C.white, fontSize: 13, fontWeight: '700' },
+  selectionBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: r.md, paddingVertical: 10 },
+  selectionBtnAlt:  { backgroundColor: '#374151' },
+  selectionBtnText: { color: C.white, fontSize: 13, fontFamily: font.bold },
 });

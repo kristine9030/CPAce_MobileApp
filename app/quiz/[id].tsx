@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, Alert, Animated,
+  ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
-import { C, sp, r, sh } from '@/constants/cpace-theme';
+import { C, sp, r, font, grad } from '@/constants/cpace-theme';
+import { GradientButton, GradientFill } from '@/components/ui/gradient';
 
 interface Option { id: number; letter: string; text: string }
 interface Question {
@@ -132,7 +133,7 @@ export default function TakeQuizScreen() {
       {/* Header */}
       <View style={s.header}>
         <TouchableOpacity onPress={handleCancel}>
-          <Ionicons name="close" size={24} color={C.white} />
+          <Ionicons name="close" size={24} color={C.text} />
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: 'center' }}>
           <Text style={s.headerTitle}>{q.item_number} / {total}</Text>
@@ -145,7 +146,7 @@ export default function TakeQuizScreen() {
 
       {/* Progress Bar */}
       <View style={s.progressBg}>
-        <View style={[s.progressFill, { width: `${((current + 1) / total) * 100}%` }]} />
+        <GradientFill diagonal={false} style={[s.progressFill, { width: `${((current + 1) / total) * 100}%` }]} />
       </View>
 
       <ScrollView contentContainerStyle={{ padding: sp.lg }}>
@@ -159,9 +160,15 @@ export default function TakeQuizScreen() {
               style={[s.option, selected && s.optionSelected]}
               onPress={() => handleSelect(q.question_id, opt.id)}
             >
-              <View style={[s.optLetter, selected && s.optLetterSelected]}>
-                <Text style={[s.optLetterText, selected && { color: C.white }]}>{opt.letter}</Text>
-              </View>
+              {selected ? (
+                <GradientFill style={[s.optLetter, s.optLetterSelected]}>
+                  <Text style={[s.optLetterText, { color: C.white }]}>{opt.letter}</Text>
+                </GradientFill>
+              ) : (
+                <View style={s.optLetter}>
+                  <Text style={s.optLetterText}>{opt.letter}</Text>
+                </View>
+              )}
               <Text style={[s.optText, selected && s.optTextSelected]}>{opt.text}</Text>
             </TouchableOpacity>
           );
@@ -180,16 +187,21 @@ export default function TakeQuizScreen() {
         </TouchableOpacity>
 
         {current < total - 1 ? (
-          <TouchableOpacity style={s.navBtnPrimary} onPress={() => setCurrent(c => c + 1)}>
+          <GradientButton radius={r.md} contentStyle={s.navBtnPrimary} onPress={() => setCurrent(c => c + 1)}>
             <Text style={s.navBtnPrimaryText}>Next</Text>
             <Ionicons name="arrow-forward" size={20} color={C.white} />
-          </TouchableOpacity>
+          </GradientButton>
         ) : (
-          <TouchableOpacity style={[s.navBtnPrimary, { backgroundColor: C.success }, submitting && { opacity: 0.7 }]} onPress={() => handleSubmit()} disabled={submitting}>
-            {submitting
-              ? <ActivityIndicator color={C.white} />
-              : <><Text style={s.navBtnPrimaryText}>Submit</Text><Ionicons name="checkmark" size={20} color={C.white} /></>}
-          </TouchableOpacity>
+          <GradientButton
+            radius={r.md}
+            colors={grad.success}
+            contentStyle={s.navBtnPrimary}
+            onPress={() => handleSubmit()}
+            loading={submitting}
+          >
+            <Text style={s.navBtnPrimaryText}>Submit</Text>
+            <Ionicons name="checkmark" size={20} color={C.white} />
+          </GradientButton>
         )}
       </View>
     </SafeAreaView>
@@ -205,24 +217,24 @@ function fmtTime(sec: number) {
 const s = StyleSheet.create({
   safe:             { flex: 1, backgroundColor: C.bg },
   center:           { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
-  header:           { backgroundColor: C.primary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: sp.lg, paddingVertical: sp.md },
-  headerTitle:      { fontSize: 15, fontWeight: '700', color: C.white },
-  timer:            { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
-  answeredCount:    { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
+  header:           { backgroundColor: C.bg, flexDirection: 'row', alignItems: 'center', paddingHorizontal: sp.lg, paddingVertical: sp.md },
+  headerTitle:      { fontSize: 15, fontFamily: font.semiBold, color: C.text },
+  timer:            { fontSize: 12, fontFamily: font.medium, color: C.muted, marginTop: 2 },
+  answeredCount:    { fontSize: 13, fontFamily: font.regular, color: C.muted },
   progressBg:       { height: 3, backgroundColor: C.border },
-  progressFill:     { height: 3, backgroundColor: C.accent },
-  questionText:     { fontSize: 16, lineHeight: 24, color: C.text, fontWeight: '600', marginBottom: sp.lg },
-  option:           { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: C.card, borderRadius: r.lg, padding: sp.md, marginBottom: sp.sm, borderWidth: 1, borderColor: C.border, ...sh.sm },
-  optionSelected:   { borderColor: C.accent, backgroundColor: C.accent + '0d' },
+  progressFill:     { height: 3 },
+  questionText:     { fontSize: 16, lineHeight: 24, color: C.text, fontFamily: font.semiBold, marginBottom: sp.lg },
+  option:           { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.md, marginBottom: sp.sm, borderWidth: 1, borderColor: C.border, },
+  optionSelected:   { borderColor: C.accent, backgroundColor: 'rgba(165,32,32,0.04)' },
   optLetter:        { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: C.border, justifyContent: 'center', alignItems: 'center', marginRight: sp.sm },
-  optLetterSelected:{ backgroundColor: C.accent, borderColor: C.accent },
-  optLetterText:    { fontSize: 13, fontWeight: '700', color: C.muted },
-  optText:          { flex: 1, fontSize: 14, color: C.text, lineHeight: 20, paddingTop: 6 },
-  optTextSelected:  { color: C.primary, fontWeight: '600' },
+  optLetterSelected:{ borderColor: 'transparent', overflow: 'hidden' },
+  optLetterText:    { fontSize: 13, fontFamily: font.bold, color: C.muted },
+  optText:          { flex: 1, fontSize: 14, fontFamily: font.regular, color: C.text, lineHeight: 20, paddingTop: 6 },
+  optTextSelected:  { color: C.primary, fontFamily: font.semiBold },
   bottomNav:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: sp.md, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.card },
   navBtn:           { flexDirection: 'row', alignItems: 'center', gap: sp.xs, paddingHorizontal: sp.md, paddingVertical: 10, borderRadius: r.md, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border },
   navBtnDisabled:   { opacity: 0.4 },
-  navBtnText:       { fontSize: 15, fontWeight: '600', color: C.text },
-  navBtnPrimary:    { flexDirection: 'row', alignItems: 'center', gap: sp.xs, paddingHorizontal: sp.lg, paddingVertical: 10, borderRadius: r.md, backgroundColor: C.accent },
-  navBtnPrimaryText:{ fontSize: 15, fontWeight: '700', color: C.white },
+  navBtnText:       { fontSize: 15, fontFamily: font.semiBold, color: C.text },
+  navBtnPrimary:    { gap: sp.xs, paddingHorizontal: sp.lg, paddingVertical: 10 },
+  navBtnPrimaryText:{ fontSize: 15, fontFamily: font.bold, color: C.white },
 });

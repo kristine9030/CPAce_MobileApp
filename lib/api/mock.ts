@@ -60,6 +60,112 @@ const BANK: BankQuestion[] = [
   { text: 'Which characteristic distinguishes a partnership from a corporation?', topic: 'Partnership', subject_code: 'BLaw', options: ['Separate juridical personality', 'Created by operation of law', 'Mutual agency among owners', 'Limited liability of all owners'], correct: 2, explanation: 'In a partnership, every partner is an agent of the firm (mutual agency); corporations act only through their board.' },
 ];
 
+// ─── Topics per subject + their study materials ───────────────────────────────
+// Mirrors the web: opening a subject lists every topic assigned to it, and
+// opening a topic lists the materials attached to that topic.
+interface MockTopic {
+  id: number;
+  subject_id: number;
+  name: string;
+  description: string;
+  question_count: number;
+  material_count: number;
+  mastery: number;
+}
+
+const TOPICS: MockTopic[] = (() => {
+  let seq = 1;
+  const out: MockTopic[] = [];
+
+  for (const subject of SUBJECTS) {
+    const names = [...new Set(BANK.filter(q => q.subject_code === subject.code).map(q => q.topic))];
+    names.forEach((name, i) => {
+      out.push({
+        id: seq++,
+        subject_id: subject.id,
+        name,
+        description: `Key concepts and common exam traps in ${name}.`,
+        question_count: 12 + ((i * 7) % 20),
+        material_count: (i % 3) + 1,
+        mastery: i === 0 ? subject.mastery : (i % 2 === 0 ? 0 : Math.max(20, subject.mastery - i * 8)),
+      });
+    });
+  }
+
+  return out;
+})();
+
+// The web treats an attempted topic scoring below the subject's passing
+// threshold as "weak"; mock subjects all use the default 75%.
+const PASSING_THRESHOLD = 75;
+
+/** Topics of one subject, shaped like the API sends them (no subject_id). */
+function subjectTopics(subjectId: number) {
+  return TOPICS
+    .filter(t => t.subject_id === subjectId)
+    .map(({ subject_id, ...t }) => ({
+      ...t,
+      is_weak: t.mastery > 0 && t.mastery < PASSING_THRESHOLD,
+    }));
+}
+
+/** Topic / question / weak-topic counters shown on the subject card. */
+function subjectStats(subjectId: number) {
+  const topics = subjectTopics(subjectId);
+  return {
+    topic_count: topics.length,
+    question_count: topics.reduce((sum, t) => sum + t.question_count, 0),
+    weak_count: topics.filter(t => t.is_weak).length,
+    passing_threshold: PASSING_THRESHOLD,
+  };
+}
+
+interface MockMaterial {
+  id: number;
+  topic_id: number;
+  title: string;
+  description: string | null;
+  kind: 'file' | 'link';
+  file_category: string;
+  original_name: string | null;
+  file_size: number | null;
+  human_size: string | null;
+  uploader_name: string | null;
+  url: string;
+}
+
+const MATERIALS: MockMaterial[] = (() => {
+  const templates = [
+    { kind: 'file' as const, file_category: 'pdf',   suffix: 'Lecture Notes', size: 1_468_006, desc: 'Summary handout with worked examples.' },
+    { kind: 'link' as const, file_category: 'link',  suffix: 'Video Walkthrough', size: null, desc: 'Recorded discussion from your faculty.' },
+    { kind: 'file' as const, file_category: 'excel', suffix: 'Practice Worksheet', size: 84_213, desc: 'Drill set you can answer offline.' },
+  ];
+
+  let seq = 1;
+  const out: MockMaterial[] = [];
+
+  for (const topic of TOPICS) {
+    for (let i = 0; i < topic.material_count; i++) {
+      const t = templates[i % templates.length];
+      out.push({
+        id: seq++,
+        topic_id: topic.id,
+        title: `${topic.name} — ${t.suffix}`,
+        description: t.desc,
+        kind: t.kind,
+        file_category: t.file_category,
+        original_name: t.kind === 'file' ? `${topic.name.toLowerCase().replace(/\s+/g, '-')}.${t.file_category === 'pdf' ? 'pdf' : 'xlsx'}` : null,
+        file_size: t.size,
+        human_size: t.size ? (t.size >= 1048576 ? `${(t.size / 1048576).toFixed(1)} MB` : `${Math.round(t.size / 1024)} KB`) : null,
+        uploader_name: 'Prof. Reyes',
+        url: 'https://example.com/cpace-mock-material',
+      });
+    }
+  }
+
+  return out;
+})();
+
 // ─── Quiz sessions (in-memory) ────────────────────────────────────────────────
 interface SessionQuestion {
   item_number: number;
@@ -290,6 +396,14 @@ const REVIEW_TOPICS = [
   { topic: 'Obligations',         subject_code: 'BLaw' },
 ];
 
+// Student-added study blocks (mirrors the server's `study_events` table).
+interface MockStudyEvent {
+  id: number; title: string; subject_code: string | null;
+  date: string; start_hour: number; duration_hours: number;
+}
+let studyEvents: MockStudyEvent[] = [];
+let studyEventSeq = 1;
+
 function buildCalendar(year: number, month: number) {
   const now = today();
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -320,11 +434,14 @@ function buildCalendar(year: number, month: number) {
     .slice(0, 3)
     .map((d, i) => ({ date: d.date, ...REVIEW_TOPICS[(d.day + i) % REVIEW_TOPICS.length] }));
 
+  const prefix = `${year}-${String(month).padStart(2, '0')}`;
+
   return {
     year,
     month,
     month_name: new Date(year, month - 1, 1).toLocaleDateString('en-PH', { month: 'long' }),
     days,
+    custom_events: studyEvents.filter(e => e.date.startsWith(prefix)),
     today_reviews: todayDue,
     upcoming,
   };
@@ -370,7 +487,42 @@ export async function mockRequest(method: string, url: string, body?: any): Prom
       points: USER.total_points,
     };
   }
-  if (method === 'GET' && url === '/subjects')  return { subjects: SUBJECTS };
+  if (method === 'GET' && url === '/subjects') {
+    return {
+      subjects: SUBJECTS.map(s => ({
+        ...s,
+        ...subjectStats(s.id),
+        topics: subjectTopics(s.id),
+      })),
+    };
+  }
+
+  // /subjects/:id/topics — every topic assigned to the subject
+  const topicsMatch = url.match(/^\/subjects\/(\d+)\/topics$/);
+  if (method === 'GET' && topicsMatch) {
+    const subjectId = Number(topicsMatch[1]);
+    const subject = SUBJECTS.find(s => s.id === subjectId);
+    if (!subject) throw new Error('Subject not found.');
+    return {
+      subject: { ...subject, ...subjectStats(subjectId) },
+      topics: subjectTopics(subjectId),
+    };
+  }
+
+  // /subjects/:id/topics/:topicId/materials — study materials for one topic
+  const materialsMatch = url.match(/^\/subjects\/(\d+)\/topics\/(\d+)\/materials$/);
+  if (method === 'GET' && materialsMatch) {
+    const subjectId = Number(materialsMatch[1]);
+    const topicId   = Number(materialsMatch[2]);
+    const subject = SUBJECTS.find(s => s.id === subjectId);
+    const topic   = TOPICS.find(t => t.id === topicId && t.subject_id === subjectId);
+    if (!subject || !topic) throw new Error('Topic not found.');
+    return {
+      subject: { id: subject.id, code: subject.code, name: subject.name, color: subject.color },
+      topic:   { id: topic.id, name: topic.name, description: topic.description },
+      materials: MATERIALS.filter(m => m.topic_id === topicId).map(({ topic_id, ...m }) => m),
+    };
+  }
 
   if (method === 'POST' && url === '/quizzes/start') {
     const mode: string = body?.mode ?? 'adaptive';
@@ -443,6 +595,27 @@ export async function mockRequest(method: string, url: string, body?: any): Prom
     const y = Number(body?.year)  || today().getFullYear();
     const m = Number(body?.month) || today().getMonth() + 1;
     return buildCalendar(y, m);
+  }
+
+  if (method === 'POST' && url === '/calendar/events') {
+    const title = String(body?.title ?? '').trim();
+    if (!title) throw new Error('A title is required.');
+    const event: MockStudyEvent = {
+      id: studyEventSeq++,
+      title: title.slice(0, 150),
+      subject_code: body?.subject_code ? String(body.subject_code) : null,
+      date: String(body?.date ?? ''),
+      start_hour: Math.min(23, Math.max(0, Number(body?.start_hour) || 9)),
+      duration_hours: Math.min(8, Math.max(1, Number(body?.duration_hours) || 1)),
+    };
+    studyEvents.push(event);
+    return { event };
+  }
+
+  const eventDelete = url.match(/^\/calendar\/events\/(\d+)$/);
+  if (method === 'DELETE' && eventDelete) {
+    studyEvents = studyEvents.filter(e => e.id !== Number(eventDelete[1]));
+    return { ok: true };
   }
 
   if (method === 'POST' && url === '/ai-tutor/chat') {

@@ -5,7 +5,7 @@ import {
   Alert, Image, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/lib/context/auth-context';
@@ -51,6 +51,15 @@ export default function LoginScreen() {
         end={{ x: 1, y: 1 }}
         style={s.gradient}
       >
+        {/* decorative abstract shapes */}
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <View style={s.shapeA} />
+          <View style={s.shapeB} />
+          <View style={s.shapeC} />
+          <View style={s.shapeD} />
+          <View style={s.shapeE} />
+        </View>
+
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
@@ -99,7 +108,7 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={s.forgot}>
+              <TouchableOpacity style={s.forgot} onPress={() => router.push('/(auth)/forgot-password')}>
                 <Text style={s.forgotText}>Forgot password?</Text>
               </TouchableOpacity>
 
@@ -120,31 +129,16 @@ export default function LoginScreen() {
               {/* Divider */}
               <View style={s.divider}>
                 <View style={s.dividerLine} />
-                <Text style={s.dividerText}>or continue with</Text>
+                <Text style={s.dividerText}>or</Text>
                 <View style={s.dividerLine} />
               </View>
 
-              {/* Social buttons */}
-              <View style={s.socialRow}>
-                <TouchableOpacity style={s.socialBtn} activeOpacity={0.75}
-                  onPress={() => Alert.alert('Coming Soon', 'Google sign-in will be available soon.')}>
-                  <Image source={{ uri: 'https://www.gstatic.com/images/branding/googleg/2x/googleg_standard_color_128dp.png' }} style={s.socialLogo} />
-                  <Text style={s.socialText}>Google</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.socialBtn} activeOpacity={0.75}
-                  onPress={() => Alert.alert('Coming Soon', 'Microsoft sign-in will be available soon.')}>
-                  <Image source={{ uri: 'https://img.icons8.com/color/96/microsoft.png' }} style={s.socialLogo} />
-                  <Text style={s.socialText}>Microsoft</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Sign up link */}
-              <View style={s.linkRow}>
-                <Text style={s.linkText}>Don't have an account? </Text>
-                <Link href="/(auth)/signup">
-                  <Text style={s.linkBold}>Sign Up</Text>
-                </Link>
-              </View>
+              {/* Google sign-in */}
+              <TouchableOpacity style={s.googleBtn} activeOpacity={0.8}
+                onPress={() => Alert.alert('Coming Soon', 'Google sign-in will be available soon.')}>
+                <Image source={{ uri: 'https://www.gstatic.com/images/branding/googleg/2x/googleg_standard_color_128dp.png' }} style={s.socialLogo} />
+                <Text style={s.socialText}>Continue with Google</Text>
+              </TouchableOpacity>
             </View>
 
           </ScrollView>
@@ -159,9 +153,16 @@ const s = StyleSheet.create({
   gradient: { flex: 1 },
   scroll:   { flexGrow: 1 },
 
+  // Abstract decorative shapes
+  shapeA: { position: 'absolute', top: -60, right: -70, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.055)' },
+  shapeB: { position: 'absolute', top: 30, left: -55, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.045)' },
+  shapeC: { position: 'absolute', top: 18, right: 46, width: 108, height: 108, borderRadius: 54, borderWidth: 2, borderColor: 'rgba(255,255,255,0.10)' },
+  shapeD: { position: 'absolute', top: 168, left: 34, width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.05)' },
+  shapeE: { position: 'absolute', top: 118, right: -30, width: 90, height: 90, borderRadius: 45, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.08)' },
+
   // Brand
-  brand:    { alignItems: 'center', paddingTop: 48, paddingBottom: 32, paddingHorizontal: sp.lg },
-  logo:     { width: 70, height: 70, borderRadius: 16, marginBottom: 12 },
+  brand:    { alignItems: 'center', paddingTop: 26, paddingBottom: 20, paddingHorizontal: sp.lg },
+  logo:     { width: 108, height: 108, borderRadius: 24, marginBottom: 6 },
   appName:  { fontSize: 34, fontFamily: F.extraBold, color: '#fff', letterSpacing: 0.5 },
   tagline:  { fontSize: 13, fontFamily: F.regular, color: 'rgba(255,255,255,0.70)', marginTop: 4 },
 
@@ -199,15 +200,14 @@ const s = StyleSheet.create({
   dividerLine: { flex: 1, height: 1, backgroundColor: '#E5E5E5' },
   dividerText: { fontSize: 12, fontFamily: F.regular, color: C.muted },
 
-  // Social
-  socialRow: { flexDirection: 'row', gap: 12 },
-  socialBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 13, borderRadius: 12,
+  // Google
+  googleBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, paddingVertical: 14, borderRadius: 12,
     backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E5E5E5',
   },
   socialLogo: { width: 20, height: 20, resizeMode: 'contain' },
-  socialText: { fontSize: 14, fontFamily: F.semiBold, color: C.text },
+  socialText: { fontSize: 15, fontFamily: F.semiBold, color: C.text },
 
   // Link
   linkRow:  { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 24 },

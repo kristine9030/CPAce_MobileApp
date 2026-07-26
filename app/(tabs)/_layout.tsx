@@ -8,7 +8,8 @@ import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withTiming,
   interpolate, Extrapolation,
 } from 'react-native-reanimated';
-import { C } from '@/constants/cpace-theme';
+import { C, grad } from '@/constants/cpace-theme';
+import { GradientFill } from '@/components/ui/gradient';
 
 const SW     = Dimensions.get('window').width;
 const FAB_D  = 58;
@@ -78,9 +79,9 @@ function PopupMenu({ visible, onClose, onNavigate }: {
                 activeOpacity={0.7}
                 onPress={() => { onNavigate(item.href); onClose(); }}
               >
-                <View style={s.popupCircle}>
-                  <Ionicons name={item.icon} size={22} color={C.accent} />
-                </View>
+                <GradientFill style={s.popupCircle}>
+                  <Ionicons name={item.icon} size={22} color={C.white} />
+                </GradientFill>
                 <Text style={s.popupLabel}>{item.label}</Text>
               </TouchableOpacity>
             ))}
@@ -124,15 +125,36 @@ function CustomTabBar(_props: BottomTabBarProps) {
                   activeOpacity={0.85}
                   onPress={() => setMenuOpen(v => !v)}
                 >
-                  <View style={[s.fab, menuOpen && s.fabActive]}>
+                  <GradientFill
+                    colors={menuOpen ? grad.outline : grad.brand}
+                    style={s.fab}
+                  >
                     <DotsGrid />
-                  </View>
+                  </GradientFill>
                 </TouchableOpacity>
               );
             }
 
             /* ── regular tab ── */
             const active = isActive(tab.href);
+            const inner = (
+              <>
+                <Ionicons
+                  name={active ? tab.iconOn : tab.iconOff}
+                  size={22}
+                  color={active ? C.white : '#9CA3AF'}
+                />
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  style={[s.tabLabel, { color: active ? C.white : '#9CA3AF' }]}
+                >
+                  {tab.label}
+                </Text>
+              </>
+            );
+
             return (
               <TouchableOpacity
                 key={tab.id}
@@ -140,19 +162,11 @@ function CustomTabBar(_props: BottomTabBarProps) {
                 activeOpacity={0.75}
                 onPress={() => go(tab.href)}
               >
-                <Ionicons
-                  name={active ? tab.iconOn : tab.iconOff}
-                  size={24}
-                  color={active ? C.accent : '#9CA3AF'}
-                />
-                <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.75}
-                  style={[s.tabLabel, { color: active ? C.accent : '#9CA3AF' }]}
-                >
-                  {tab.label}
-                </Text>
+                {active ? (
+                  <GradientFill style={s.tabActive}>{inner}</GradientFill>
+                ) : (
+                  <View style={s.tabInactive}>{inner}</View>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -199,9 +213,9 @@ const s = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#FFF0F0',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   popupLabel: {
     fontSize: 10,
@@ -237,10 +251,31 @@ const s = StyleSheet.create({
   tab: {
     flex: 1,
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  /* Gradient pill behind the selected tab — same ramp as the Sign In button */
+  tabActive: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    borderRadius: 22,
+    overflow: 'hidden',
+    elevation: 6,
+  },
+  tabInactive: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontFamily: 'Poppins_500Medium',
     textAlign: 'center',
   },
@@ -255,17 +290,14 @@ const s = StyleSheet.create({
     width: FAB_D,
     height: FAB_D,
     borderRadius: FAB_D / 2,
-    backgroundColor: C.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
     shadowColor: C.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.40,
     shadowRadius: 10,
     elevation: 10,
-  },
-  fabActive: {
-    backgroundColor: '#5C0F11',
   },
 });
 

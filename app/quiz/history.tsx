@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
-import { C, sp, r, sh } from '@/constants/cpace-theme';
+import { C, sp, r, sh, font } from '@/constants/cpace-theme';
+import { ScreenHeader } from '@/components/ui/screen-header';
 
 interface HistorySession {
   id: number;
@@ -52,14 +53,8 @@ export default function QuizHistoryScreen() {
   }
 
   return (
-    <SafeAreaView style={s.safe}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={C.white} />
-        </TouchableOpacity>
-        <Text style={s.title}>Quiz History</Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <ScreenHeader title="Quiz History" subtitle="Your past quiz sessions" onBack={() => router.back()} />
 
       <FlatList
         data={sessions}
@@ -70,7 +65,8 @@ export default function QuizHistoryScreen() {
           const modeColor = MODE_COLORS[item.mode] ?? C.accent;
           const pct = item.score_percent != null ? Math.round(item.score_percent) : null;
           return (
-            <TouchableOpacity style={[s.card, sh.sm]} onPress={() => router.push({ pathname: '/quiz/results/[id]', params: { id: String(item.id) } })}>
+            <TouchableOpacity style={[s.cardWrap]} onPress={() => router.push({ pathname: '/quiz/results/[id]', params: { id: String(item.id) } })}>
+              <View style={s.card}>
               <View style={[s.modeTag, { backgroundColor: modeColor + '20' }]}>
                 <Text style={[s.modeText, { color: modeColor }]}>{MODES[item.mode] ?? item.mode}</Text>
               </View>
@@ -83,6 +79,7 @@ export default function QuizHistoryScreen() {
                 <Text style={[s.score, { color: scoreColor(pct) }]}>{pct}%</Text>
               )}
               <Ionicons name="chevron-forward" size={16} color={C.light} />
+              </View>
             </TouchableOpacity>
           );
         }}
@@ -107,17 +104,15 @@ function scoreColor(pct: number) {
 const s = StyleSheet.create({
   safe:      { flex: 1, backgroundColor: C.bg },
   center:    { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
-  header:    { backgroundColor: C.primary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: sp.lg, paddingVertical: sp.md },
-  backBtn:   { width: 40 },
-  title:     { flex: 1, fontSize: 18, fontWeight: '700', color: C.white, textAlign: 'center' },
-  card:      { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: r.lg, padding: sp.md, marginBottom: sp.sm },
+  cardWrap:  { borderRadius: r.lg, marginBottom: sp.sm, overflow: 'hidden', },
+  card:      { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.md, overflow: 'hidden' },
   modeTag:   { paddingHorizontal: sp.sm, paddingVertical: sp.xs, borderRadius: r.sm, marginRight: sp.sm },
-  modeText:  { fontSize: 11, fontWeight: '700' },
+  modeText:  { fontSize: 11, fontFamily: font.bold },
   middle:    { flex: 1 },
-  subject:   { fontSize: 14, fontWeight: '700', color: C.text },
-  detail:    { fontSize: 12, color: C.muted },
-  date:      { fontSize: 11, color: C.light, marginTop: 2 },
-  score:     { fontSize: 20, fontWeight: '800', marginRight: sp.sm },
+  subject:   { fontSize: 14, fontFamily: font.bold, color: C.text },
+  detail:    { fontSize: 12, fontFamily: font.regular, color: C.muted },
+  date:      { fontSize: 11, fontFamily: font.regular, color: C.light, marginTop: 2 },
+  score:     { fontSize: 20, fontFamily: font.extraBold, marginRight: sp.sm },
   empty:     { alignItems: 'center', paddingTop: 60, gap: sp.md },
-  emptyText: { fontSize: 14, color: C.muted },
+  emptyText: { fontSize: 14, fontFamily: font.regular, color: C.muted },
 });

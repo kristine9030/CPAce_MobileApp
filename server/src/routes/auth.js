@@ -4,9 +4,26 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { q, one } = require('../db');
 const { apiAuth } = require('../middleware/auth');
-const { nowSql, toSqlDateTime, addDays } = require('../utils/dates');
+const { nowSql, toSqlDateTime, addDays, parseSql } = require('../utils/dates');
+const { sendResetCode } = require('../services/mailer');
 
 const router = express.Router();
+
+// Lazily ensure the reset-code table exists (cpace_db is otherwise managed by
+// the Laravel web migrations, so we create our own small table on demand).
+let resetTableReady = false;
+async function ensureResetTable() {
+  if (resetTableReady) return;
+  await q(`CREATE TABLE IF NOT EXISTS password_reset_codes (
+    email VARCHAR(191) NOT NULL PRIMARY KEY,
+    code VARCHAR(10) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL
+  )`);
+  resetTableReady = true;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function userPayload(user) {
   const profile = await one('SELECT * FROM student_profiles WHERE user_id = ?', [user.id]);
@@ -96,6 +113,73 @@ router.post('/signup', async (req, res, next) => {
     const user = await one('SELECT * FROM users WHERE id = ?', [userId]);
     const token = await generateToken(userId);
     res.status(201).json({ token, user: await userPayload(user) });
+  } catch (err) { next(err); }
+});
+
+// ── Forgot password: email a 6-digit code ────────────────────────────────
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    await ensureResetTable();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) {
+      return res.status(422).json({ message: 'A valid email is required.', errors: { email: ['A valid email is required.'] } });
+    }
+
+    const user = await one('SELECT id, role_id, is_active FROM users WHERE email = ?', [email]);
+    const generic = { message: 'If an account with that email exists, a reset code has been sent.' };
+
+    // Only send to real, active student accounts (mobile is students only).
+    if (!user || Number(user.role_id) !== 2 || !user.is_active) {
+      return res.json(generic);
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const expires = toSqlDateTime(new Date(Date.now() + 15 * 60 * 1000));
+    await q('DELETE FROM password_reset_codes WHERE email = ?', [email]);
+    await q(
+      'INSERT INTO password_reset_codes (email, code, expires_at, created_at) VALUES (?, ?, ?, ?)',
+      [email, code, expires, nowSql()]
+    );
+
+    const { sent } = await sendResetCode(email, code);
+
+    const payload = { ...generic };
+    if (!sent) payload.dev_code = code; // SMTP not configured — allow local testing
+    res.json(payload);
+  } catch (err) { next(err); }
+});
+
+// ── Reset password: verify the code and set a new password ────────────────
+router.post('/reset-password', async (req, res, next) => {
+  try {
+    await ensureResetTable();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const code = String(req.body?.code || '').trim();
+    const { password, password_confirmation } = req.body || {};
+
+    const errors = {};
+    if (!EMAIL_RE.test(email)) errors.email = ['A valid email is required.'];
+    if (!/^\d{6}$/.test(code)) errors.code = ['Enter the 6-digit code sent to your email.'];
+    if (!password || String(password).length < 8) errors.password = ['Password must be at least 8 characters.'];
+    else if (password !== password_confirmation) errors.password = ['Password confirmation does not match.'];
+    if (Object.keys(errors).length) {
+      return res.status(422).json({ message: Object.values(errors)[0][0], errors });
+    }
+
+    const row = await one('SELECT * FROM password_reset_codes WHERE email = ?', [email]);
+    if (!row || String(row.code) !== code) {
+      return res.status(422).json({ message: 'Invalid or expired code.', errors: { code: ['Invalid or expired code.'] } });
+    }
+    if (parseSql(row.expires_at) < new Date()) {
+      await q('DELETE FROM password_reset_codes WHERE email = ?', [email]);
+      return res.status(422).json({ message: 'This code has expired. Please request a new one.', errors: { code: ['This code has expired.'] } });
+    }
+
+    const hash = bcrypt.hashSync(String(password), 12);
+    await q('UPDATE users SET password = ?, updated_at = ? WHERE email = ?', [hash, nowSql(), email]);
+    await q('DELETE FROM password_reset_codes WHERE email = ?', [email]);
+
+    res.json({ message: 'Your password has been reset. You can now sign in.' });
   } catch (err) { next(err); }
 });
 

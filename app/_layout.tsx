@@ -1,34 +1,39 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
-import * as SplashScreen from 'expo-splash-screen';
-import { useFonts, Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, Poppins_900Black } from '@expo-google-fonts/poppins';
+import { useEffect, useState } from 'react';
+import { View } from 'react-native';
+import * as NativeSplash from 'expo-splash-screen';
+import { useFonts, Poppins_400Regular, Poppins_400Regular_Italic, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, Poppins_900Black } from '@expo-google-fonts/poppins';
 import { AuthProvider, useAuth } from '@/lib/context/auth-context';
 import { AiTutorProvider } from '@/lib/context/ai-tutor-context';
+import { MessagesProvider } from '@/lib/context/messages-context';
 import { AiTutorWidget } from '@/components/ai-tutor/ai-tutor-widget';
-import { C } from '@/constants/cpace-theme';
+import { SplashScreen } from '@/components/splash-screen';
 
-SplashScreen.preventAutoHideAsync();
+NativeSplash.preventAutoHideAsync();
 
 function RootLayoutNav() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router   = useRouter();
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Poppins_400Regular,
+    Poppins_400Regular_Italic,
     Poppins_500Medium,
     Poppins_600SemiBold,
     Poppins_700Bold,
     Poppins_800ExtraBold,
     Poppins_900Black,
   });
+  const [splashDone, setSplashDone] = useState(false);
 
+  // Hide the splash once fonts settle. Also hide on error, otherwise a single
+  // bad font name leaves the splash covering the app forever.
   useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync();
+    if (fontsLoaded || fontError) {
+      NativeSplash.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, fontError]);
 
   useEffect(() => {
     if (loading) return;
@@ -42,10 +47,12 @@ function RootLayoutNav() {
     }
   }, [user, loading, segments]);
 
-  if (!fontsLoaded || loading) {
+  const showSplash = (!fontsLoaded && !fontError) || loading || !splashDone;
+
+  if (showSplash) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.primary }}>
-        <ActivityIndicator size="large" color={C.white} />
+      <View style={{ flex: 1 }}>
+        <SplashScreen onReady={() => setSplashDone(true)} />
       </View>
     );
   }
@@ -56,6 +63,9 @@ function RootLayoutNav() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="quiz"         options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="subject-detail" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="topic-materials" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="messages"      options={{ animation: 'slide_from_right' }} />
       </Stack>
       {user && <AiTutorWidget />}
     </>
@@ -66,8 +76,10 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <AiTutorProvider>
-        <RootLayoutNav />
-        <StatusBar style="light" />
+        <MessagesProvider>
+          <RootLayoutNav />
+          <StatusBar style="light" />
+        </MessagesProvider>
       </AiTutorProvider>
     </AuthProvider>
   );
