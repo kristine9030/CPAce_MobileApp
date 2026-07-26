@@ -41,7 +41,16 @@ interface CalendarData {
 }
 
 interface TopicLite   { id: number; name: string; question_count?: number }
-interface SubjectLite { id: number; code: string; name: string; topics?: TopicLite[] }
+interface SubjectLite { id: number; code: string; name: string; topics?: any[] }
+
+function flattenTopics(nodes: any[]): TopicLite[] {
+  const out: TopicLite[] = [];
+  for (const n of nodes) {
+    out.push({ id: n.id, name: n.name, question_count: n.question_count });
+    if (n.children?.length) out.push(...flattenTopics(n.children));
+  }
+  return out;
+}
 
 /* ── Grid geometry ──────────────────────────────────────────────────────────*/
 const SW         = Dimensions.get('window').width;
@@ -245,7 +254,9 @@ export default function CalendarScreen() {
   };
 
   const formSubject = subjects.find(x => x.id === form?.subjectId) ?? null;
-  const formTopics  = formSubject?.topics ?? [];
+  const formTopics: TopicLite[] = formSubject?.topics
+    ? flattenTopics(formSubject.topics)
+    : [];
 
   const saveEvent = async () => {
     if (!form) return;

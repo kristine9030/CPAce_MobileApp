@@ -61,11 +61,11 @@ const BANK: BankQuestion[] = [
 ];
 
 // ─── Topics per subject + their study materials ───────────────────────────────
-// Mirrors the web: opening a subject lists every topic assigned to it, and
-// opening a topic lists the materials attached to that topic.
+// Mirrors the web: subject → topic (parent_id = null) → subtopic (parent_id set)
 interface MockTopic {
   id: number;
   subject_id: number;
+  parent_id: number | null;
   name: string;
   description: string;
   question_count: number;
@@ -73,23 +73,95 @@ interface MockTopic {
   mastery: number;
 }
 
+// Realistic nested hierarchy matching the web version's structure
+const TOPIC_HIERARCHY: Array<{
+  subjectCode: string;
+  name: string;
+  children?: string[];
+  childOf?: string;
+}>[] = [];
+
+const HIERARCHY: Record<string, Array<{ name: string; children?: string[]; q?: number; m?: number }>> = {
+  FAR: [
+    { name: 'Cash and Cash Equivalents', children: ['Bank Reconciliation', 'Petty Cash'] },
+    { name: 'Receivables', children: ['Accounts Receivable', 'Notes Receivable'] },
+    { name: 'Inventories' },
+    { name: 'Property, Plant and Equipment', children: ['Depreciation', 'Revaluation'] },
+    { name: 'Intangible Assets', children: ['Recognition and Measurement', 'Goodwill'] },
+    { name: 'Deferred Tax' },
+    { name: 'Revenue Recognition' },
+  ],
+  AFAR: [
+    { name: 'Partnership', children: ['Formation', 'Operations', 'Dissolution'] },
+    { name: 'Business Combinations', children: ['Consolidated Financial Statements', 'Goodwill Computation'] },
+    { name: 'Installment Sales' },
+  ],
+  MAS: [
+    { name: 'Cost Accounting', children: ['Job Order Costing', 'Process Costing', 'Activity-Based Costing'] },
+    { name: 'CVP Analysis' },
+    { name: 'Budgeting', children: ['Operating Budgets', 'Financial Budgets'] },
+    { name: 'Standard Costing' },
+  ],
+  AUD: [
+    { name: 'Audit Risk' },
+    { name: 'Audit Procedures', children: ['Tests of Controls', 'Substantive Procedures'] },
+    { name: 'Audit Reports' },
+    { name: 'Audit Planning', children: ['Materiality', 'Risk Assessment'] },
+  ],
+  TAX: [
+    { name: 'Corporate Tax' },
+    { name: 'Income Taxation', children: ['Graduated Tax Table', 'Optional Standard Deduction'] },
+    { name: 'VAT', children: ['VAT on Goods', 'VAT on Services'] },
+  ],
+  BLaw: [
+    { name: 'Obligations' },
+    { name: 'Contracts', children: ['Elements of a Contract', 'Void and Voidable Contracts'] },
+  ],
+};
+
 const TOPICS: MockTopic[] = (() => {
   let seq = 1;
   const out: MockTopic[] = [];
 
   for (const subject of SUBJECTS) {
-    const names = [...new Set(BANK.filter(q => q.subject_code === subject.code).map(q => q.topic))];
-    names.forEach((name, i) => {
+    const hierarchy = HIERARCHY[subject.code] ?? [];
+    let masteryIdx = 0;
+    for (const entry of hierarchy) {
+      const rootId = seq;
+      const qCount = 10 + ((masteryIdx * 5) % 15);
+      const mCount = (masteryIdx % 3) + 1;
+      const mastery = subject.mastery > 0
+        ? Math.max(20, subject.mastery - masteryIdx * 8 + (masteryIdx % 3) * 5)
+        : 0;
       out.push({
         id: seq++,
         subject_id: subject.id,
-        name,
-        description: `Key concepts and common exam traps in ${name}.`,
-        question_count: 12 + ((i * 7) % 20),
-        material_count: (i % 3) + 1,
-        mastery: i === 0 ? subject.mastery : (i % 2 === 0 ? 0 : Math.max(20, subject.mastery - i * 8)),
+        parent_id: null,
+        name: entry.name,
+        description: `Key concepts and common exam traps in ${entry.name}.`,
+        question_count: qCount,
+        material_count: mCount,
+        mastery,
       });
-    });
+      masteryIdx++;
+
+      if (entry.children) {
+        for (const childName of entry.children) {
+          const childQ = Math.max(5, qCount - 3 + (Math.abs(childName.length) % 5));
+          const childM = Math.max(1, mCount - 1);
+          out.push({
+            id: seq++,
+            subject_id: subject.id,
+            parent_id: rootId,
+            name: childName,
+            description: `Detailed study of ${childName} within ${entry.name}.`,
+            question_count: childQ,
+            material_count: childM,
+            mastery: mastery > 0 ? Math.max(15, mastery - 10 + (childName.length % 5)) : 0,
+          });
+        }
+      }
+    }
   }
 
   return out;
@@ -99,23 +171,56 @@ const TOPICS: MockTopic[] = (() => {
 // threshold as "weak"; mock subjects all use the default 75%.
 const PASSING_THRESHOLD = 75;
 
-/** Topics of one subject, shaped like the API sends them (no subject_id). */
+/** Recursively build topic tree from flat list, same as the backend. */
+function buildTopicTree(flat: MockTopic[], parentId: number | null = null): any[] {
+  return flat
+    .filter(t => t.parent_id === parentId)
+    .map(t => {
+      const children = buildTopicTree(flat, t.id);
+      const childQCount = children.reduce((s: number, c: any) => s + c.question_count, 0);
+      const childMCount = children.reduce((s: number, c: any) => s + c.material_count, 0);
+      const childMastery = children.length > 0
+        ? Math.round(children.reduce((s: number, c: any) => s + c.mastery, 0) / children.length)
+        : 0;
+      const effectiveMastery = t.mastery > 0 ? t.mastery : childMastery;
+      return {
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        parent_id: t.parent_id,
+        question_count: t.question_count + childQCount,
+        material_count: t.material_count + childMCount,
+        mastery: effectiveMastery,
+        is_weak: effectiveMastery > 0 && effectiveMastery < PASSING_THRESHOLD,
+        children,
+      };
+    });
+}
+
+/** Topics tree of one subject, shaped like the API sends them (no subject_id). */
 function subjectTopics(subjectId: number) {
-  return TOPICS
-    .filter(t => t.subject_id === subjectId)
-    .map(({ subject_id, ...t }) => ({
-      ...t,
-      is_weak: t.mastery > 0 && t.mastery < PASSING_THRESHOLD,
-    }));
+  const flat = TOPICS.filter(t => t.subject_id === subjectId);
+  return buildTopicTree(flat);
+}
+
+/** Count weak topics recursively in a tree. */
+function countWeak(nodes: any[]): number {
+  let w = 0;
+  for (const n of nodes) {
+    if (n.is_weak) w++;
+    w += countWeak(n.children);
+  }
+  return w;
 }
 
 /** Topic / question / weak-topic counters shown on the subject card. */
 function subjectStats(subjectId: number) {
-  const topics = subjectTopics(subjectId);
+  const tree = subjectTopics(subjectId);
+  const all = TOPICS.filter(t => t.subject_id === subjectId);
   return {
-    topic_count: topics.length,
-    question_count: topics.reduce((sum, t) => sum + t.question_count, 0),
-    weak_count: topics.filter(t => t.is_weak).length,
+    topic_count: all.filter(t => t.parent_id === null).length,
+    question_count: tree.reduce((sum: number, t: any) => sum + t.question_count, 0),
+    weak_count: countWeak(tree),
     passing_threshold: PASSING_THRESHOLD,
   };
 }

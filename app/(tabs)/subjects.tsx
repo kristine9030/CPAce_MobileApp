@@ -35,6 +35,16 @@ interface Subject {
   topics?: Topic[];
 }
 
+/** Recursively flatten a nested topic tree into a flat array. */
+function flattenTree(nodes: any[]): any[] {
+  const out: any[] = [];
+  for (const n of nodes) {
+    out.push(n);
+    if (n.children?.length) out.push(...flattenTree(n.children));
+  }
+  return out;
+}
+
 const ICONS: Record<string, any> = {
   calculator: 'calculator', book: 'book', briefcase: 'briefcase',
   'trending-up': 'trending-up', default: 'library',
@@ -86,11 +96,10 @@ export default function SubjectsScreen() {
         contentContainerStyle={{ padding: sp.md }}
         refreshControl={<RefreshControl refreshing={refresh} onRefresh={() => load(true)} tintColor={C.accent} />}
         renderItem={({ item }) => {
-          // Fall back to the embedded topics array when the API predates the
-          // topic_count / weak_count fields.
-          const topics     = item.topics ?? [];
-          const topicCount = item.topic_count ?? topics.length;
-          const weakCount  = item.weak_count ?? topics.filter(t => t.is_weak).length;
+          // Flatten the topic tree for backward-compatible stats fallback.
+          const flatTopics = item.topics ? flattenTree(item.topics) : [];
+          const topicCount = item.topic_count ?? flatTopics.length;
+          const weakCount  = item.weak_count ?? flatTopics.filter((t: any) => t.is_weak).length;
 
           return (
             <TouchableOpacity

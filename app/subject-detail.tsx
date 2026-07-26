@@ -28,13 +28,16 @@ const SUBJECT_IMAGES: Record<string, any> = {
   'RFBT': require('@/assets/images/RFBT.png'),
 };
 
-interface Topic {
+interface TopicNode {
   id: number;
   name: string;
   description: string;
+  parent_id: number | null;
   question_count: number;
   material_count: number;
   mastery: number;
+  is_weak?: boolean;
+  children: TopicNode[];
 }
 
 interface SubjectInfo {
@@ -44,6 +47,8 @@ interface SubjectInfo {
   description: string;
   color: string;
   icon: string;
+  topic_count?: number;
+  question_count?: number;
 }
 
 export default function SubjectDetailScreen() {
@@ -53,7 +58,7 @@ export default function SubjectDetailScreen() {
     subjectName: string;
   }>();
   const router = useRouter();
-  const [topics, setTopics] = useState<Topic[]>([]);
+  const [topicTree, setTopicTree] = useState<TopicNode[]>([]);
   const [subject, setSubject] = useState<SubjectInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,10 +68,8 @@ export default function SubjectDetailScreen() {
     try {
       const res = await client.get(`/subjects/${subjectId}/topics`);
       setSubject(res.data.subject);
-      setTopics(res.data.topics ?? []);
+      setTopicTree(res.data.topics ?? []);
     } catch (e: any) {
-      // Without this the screen would just look like "no topics", hiding a
-      // dead backend or an expired session.
       setError(e?.message || 'Could not load topics.');
     }
     setLoading(false);
@@ -123,18 +126,18 @@ export default function SubjectDetailScreen() {
             <View style={styles.heroStats}>
               <View style={styles.heroStat}>
                 <Ionicons name="book" size={14} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.heroStatText}>{topics.length} Topics</Text>
+                <Text style={styles.heroStatText}>{subject?.topic_count ?? topicTree.length} Topics</Text>
               </View>
               <View style={styles.heroStatDot} />
               <View style={styles.heroStat}>
                 <Ionicons name="help-circle" size={14} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.heroStatText}>{topics.reduce((sum, t) => sum + t.question_count, 0)} Questions</Text>
+                <Text style={styles.heroStatText}>{subject?.question_count ?? 0} Questions</Text>
               </View>
             </View>
           </GradientFill>
         </Animated.View>
 
-        {/* ── Topics List ── */}
+        {/* ── Topic Tree ── */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Choose a topic to study</Text>
           {error ? (
@@ -150,55 +153,21 @@ export default function SubjectDetailScreen() {
                 <Text style={styles.retryText}>Retry</Text>
               </GradientButton>
             </View>
-          ) : topics.length === 0 ? (
+          ) : topicTree.length === 0 ? (
             <View style={styles.empty}>
               <Ionicons name="folder-open-outline" size={40} color="#D1D5DB" />
               <Text style={styles.emptyText}>No topics available yet.</Text>
             </View>
           ) : (
-            topics.map((topic, index) => (
+            topicTree.map((topic, index) => (
               <Animated.View key={topic.id} entering={FadeInUp.delay(index * 80 + 200).springify()}>
-                <TouchableOpacity
-                  style={styles.topicCardWrap}
-                  activeOpacity={0.7}
-                  onPress={() => router.push({
-                    pathname: '/topic-materials',
-                    params: {
-                      subjectId: subjectId!,
-                      topicId: String(topic.id),
-                      subjectCode: displaySubject.code ?? '',
-                      topicName: topic.name,
-                    },
-                  })}
-                >
-                  <View style={styles.topicCard}>
-                  <View style={styles.topicLeft}>
-                    <GradientFill style={styles.topicNumber}>
-                      <Text style={styles.topicNumberText}>{index + 1}</Text>
-                    </GradientFill>
-                    <View style={styles.topicInfo}>
-                      <Text style={styles.topicName} numberOfLines={1}>{topic.name}</Text>
-                      <View style={styles.topicMetaRow}>
-                        <Ionicons name="folder-open-outline" size={12} color={C.muted} />
-                        <Text style={styles.topicMeta}>
-                          {topic.material_count ?? 0} material{topic.material_count === 1 ? '' : 's'}
-                        </Text>
-                        <Ionicons name="help-circle-outline" size={12} color={C.muted} style={{ marginLeft: 8 }} />
-                        <Text style={styles.topicMeta}>{topic.question_count} questions</Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.topicRight}>
-                    {topic.mastery > 0 ? (
-                      <View style={[styles.topicMasteryBadge, { backgroundColor: masteryColor(topic.mastery) + '18' }]}>
-                        <Text style={[styles.topicMasteryText, { color: masteryColor(topic.mastery) }]}>{topic.mastery}%</Text>
-                      </View>
-                    ) : (
-                      <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
-                    )}
-                  </View>
-                  </View>
-                </TouchableOpacity>
+                <TopicNode
+                  topic={topic}
+                  depth={0}
+                  index={index}
+                  subjectId={subjectId!}
+                  subjectCode={displaySubject.code ?? ''}
+                />
               </Animated.View>
             ))
           )}
@@ -219,6 +188,112 @@ export default function SubjectDetailScreen() {
         <View style={{ height: 24 }} />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/* ── Recursive topic node ── */
+function TopicNode({
+  topic, depth, index, subjectId, subjectCode,
+}: {
+  topic: TopicNode;
+  depth: number;
+  index: number;
+  subjectId: string;
+  subjectCode: string;
+}) {
+  const router = useRouter();
+  const [expanded, setExpanded] = useState(depth === 0);
+  const hasChildren = topic.children && topic.children.length > 0;
+
+  const navigateToMaterials = () => {
+    router.push({
+      pathname: '/topic-materials',
+      params: {
+        subjectId,
+        topicId: String(topic.id),
+        subjectCode,
+        topicName: topic.name,
+      },
+    });
+  };
+
+  return (
+    <View>
+      <View style={[styles.topicCardWrap, { marginLeft: depth * 20 }]}>
+        <View style={styles.topicCard}>
+          <View style={styles.topicLeft}>
+            {hasChildren ? (
+              <TouchableOpacity
+                onPress={() => setExpanded(v => !v)}
+                activeOpacity={0.6}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <GradientFill style={styles.topicToggle}>
+                  <Ionicons
+                    name={expanded ? 'chevron-down' : 'chevron-forward'}
+                    size={16}
+                    color={C.white}
+                  />
+                </GradientFill>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.topicDot, { backgroundColor: C.primary + '30' }]}>
+                <View style={[styles.topicDotInner, { backgroundColor: C.primary }]} />
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.topicInfo}
+              activeOpacity={0.7}
+              onPress={navigateToMaterials}
+            >
+              <Text style={styles.topicName} numberOfLines={1}>{topic.name}</Text>
+              <View style={styles.topicMetaRow}>
+                <Ionicons name="folder-open-outline" size={12} color={C.muted} />
+                <Text style={styles.topicMeta}>
+                  {topic.material_count ?? 0} material{topic.material_count === 1 ? '' : 's'}
+                </Text>
+                <Ionicons name="help-circle-outline" size={12} color={C.muted} style={{ marginLeft: 8 }} />
+                <Text style={styles.topicMeta}>{topic.question_count} questions</Text>
+                {hasChildren && (
+                  <>
+                    <Ionicons name="list-outline" size={12} color={C.muted} style={{ marginLeft: 8 }} />
+                    <Text style={styles.topicMeta}>{topic.children.length} subtopics</Text>
+                  </>
+                )}
+              </View>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={styles.topicRight}
+            activeOpacity={0.7}
+            onPress={navigateToMaterials}
+          >
+            {topic.mastery > 0 ? (
+              <View style={[styles.topicMasteryBadge, { backgroundColor: masteryColor(topic.mastery) + '18' }]}>
+                <Text style={[styles.topicMasteryText, { color: masteryColor(topic.mastery) }]}>{topic.mastery}%</Text>
+              </View>
+            ) : (
+              <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {hasChildren && expanded && (
+        <View>
+          {topic.children.map((child, ci) => (
+            <TopicNode
+              key={child.id}
+              topic={child}
+              depth={depth + 1}
+              index={ci}
+              subjectId={subjectId}
+              subjectCode={subjectCode}
+            />
+          ))}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -351,8 +426,8 @@ const styles = StyleSheet.create({
 
   /* Topic card */
   topicCardWrap: {
-    borderRadius: 16,
-    marginBottom: 10,
+    borderRadius: 14,
+    marginBottom: 8,
     overflow: 'hidden',
   },
   topicCard: {
@@ -360,28 +435,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: 'rgba(255,255,255,0.78)',
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 14,
+    padding: 12,
     overflow: 'hidden',
   },
   topicLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    gap: 12,
+    gap: 10,
   },
-  topicNumber: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+  topicToggle: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
   },
-  topicNumberText: {
-    fontSize: 14,
-    fontFamily: F.bold,
-    color: C.white,
+  topicDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  topicDotInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   topicInfo: {
     flex: 1,

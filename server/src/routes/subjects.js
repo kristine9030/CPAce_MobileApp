@@ -1,9 +1,46 @@
-// Subjects list, mirroring the web version's SubjectsApiController.
 const express = require('express');
 const { q, one } = require('../db');
 const { apiAuth } = require('../middleware/auth');
 
 const router = express.Router();
+
+/** Recursively nest a flat topic list into a tree using parent_id. */
+function buildTopicTree(flat, parentId = null) {
+  return flat
+    .filter(t => t.parent_id === parentId)
+    .map(t => {
+      const children = buildTopicTree(flat, t.id);
+      const childAttempts = children.reduce((s, c) => s + c.total_attempts, 0);
+      const childCorrect   = children.reduce((s, c) => s + c.correct_count, 0);
+      const totalAttempts  = Number(t.total_attempts) + childAttempts;
+      const correctCount   = Number(t.correct_count)  + childCorrect;
+      const attempted = totalAttempts > 0;
+      const mastery   = attempted ? Math.round((correctCount / totalAttempts) * 100) : 0;
+      const childQCount = children.reduce((s, c) => s + c.question_count, 0);
+      const childMCount = children.reduce((s, c) => s + c.material_count, 0);
+
+      return {
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        parent_id: t.parent_id,
+        question_count: Number(t.question_count) + childQCount,
+        material_count: Number(t.material_count)  + childMCount,
+        mastery,
+        is_weak: attempted && mastery < Number(t.passing_threshold),
+        total_attempts: totalAttempts,
+        correct_count: correctCount,
+        children,
+      };
+    });
+}
+
+/** Attach passing_threshold to every topic row from its subject. */
+async function attachThreshold(rows, subjectId) {
+  const subject = await one('SELECT passing_threshold FROM subjects WHERE id = ?', [subjectId]);
+  const threshold = Number(subject?.passing_threshold ?? 75);
+  return rows.map(r => ({ ...r, passing_threshold: threshold }));
+}
 
 router.get('/subjects', apiAuth, async (req, res, next) => {
   try {
@@ -13,7 +50,7 @@ router.get('/subjects', apiAuth, async (req, res, next) => {
     const subjects = [];
     for (const subject of rows) {
       const topicRows = await q(
-        `SELECT t.id, t.name, t.description,
+        `SELECT t.id, t.name, t.description, t.parent_id,
                 (SELECT COUNT(*) FROM questions q WHERE q.topic_id = t.id AND q.is_active = 1) AS question_count,
                 (SELECT COUNT(*) FROM materials m WHERE m.topic_id = t.id AND m.is_active = 1) AS material_count,
                 COALESCE(pr.total_attempts, 0) AS total_attempts,
@@ -25,40 +62,33 @@ router.get('/subjects', apiAuth, async (req, res, next) => {
         [studentId, subject.id]
       );
 
-      const topicIds = topicRows.map((t) => t.id);
-      const passingThreshold = Number(subject.passing_threshold);
-      const topics = topicRows.map((t) => {
-        const attempted = Number(t.total_attempts) > 0;
-        const topicMastery = attempted
-          ? Math.round((Number(t.correct_count) / Number(t.total_attempts)) * 100)
-          : 0;
+      const withThreshold = await attachThreshold(topicRows, subject.id);
+      const topicTree = buildTopicTree(withThreshold);
 
-        return {
-          id: t.id,
-          name: t.name,
-          description: t.description,
-          question_count: Number(t.question_count),
-          material_count: Number(t.material_count),
-          mastery: topicMastery,
-          // "Weak" mirrors the web: an attempted topic scoring below the
-          // subject's passing threshold.
-          is_weak: attempted && topicMastery < passingThreshold,
-        };
-      });
-
+      const allIds = withThreshold.map(t => t.id);
       let questionCount = 0;
       let mastery = 0;
       let attempts = 0;
-      if (topicIds.length) {
-        const [qc] = await q('SELECT COUNT(*) v FROM questions WHERE is_active = 1 AND topic_id IN (?)', [topicIds]);
+      if (allIds.length) {
+        const [qc] = await q('SELECT COUNT(*) v FROM questions WHERE is_active = 1 AND topic_id IN (?)', [allIds]);
         questionCount = Number(qc.v);
         const perf = await one(
           'SELECT COALESCE(SUM(correct_count),0) c, COALESCE(SUM(total_attempts),0) t FROM performance_records WHERE student_id = ? AND topic_id IN (?)',
-          [studentId, topicIds]
+          [studentId, allIds]
         );
         attempts = Number(perf.t);
         mastery = attempts > 0 ? Math.round((Number(perf.c) / attempts) * 100) : 0;
       }
+
+      const passingThreshold = Number(subject.passing_threshold ?? 75);
+      const countWeak = (nodes) => {
+        let w = 0;
+        for (const n of nodes) {
+          if (n.is_weak) w++;
+          w += countWeak(n.children);
+        }
+        return w;
+      };
 
       subjects.push({
         id: subject.id,
@@ -67,13 +97,13 @@ router.get('/subjects', apiAuth, async (req, res, next) => {
         description: subject.description,
         color: subject.color,
         icon: subject.icon,
-        topic_count: topics.length,
+        topic_count: withThreshold.filter(t => t.parent_id === null).length,
         question_count: questionCount,
-        weak_count: topics.filter((t) => t.is_weak).length,
+        weak_count: countWeak(topicTree),
         mastery,
         passing_threshold: passingThreshold,
         is_passing: attempts > 0 && mastery >= passingThreshold,
-        topics,
+        topics: topicTree,
       });
     }
 
@@ -89,10 +119,8 @@ router.get('/subjects/:id/topics', apiAuth, async (req, res, next) => {
     const subject = await one('SELECT * FROM subjects WHERE id = ? AND is_active = 1', [subjectId]);
     if (!subject) return res.status(404).json({ message: 'Subject not found.' });
 
-    // Scalar subqueries instead of joins — joining questions and materials at
-    // once would multiply the rows and inflate both counts.
     const rows = await q(
-      `SELECT t.id, t.name, t.description,
+      `SELECT t.id, t.name, t.description, t.parent_id,
               (SELECT COUNT(*) FROM questions q WHERE q.topic_id = t.id AND q.is_active = 1) AS question_count,
               (SELECT COUNT(*) FROM materials m WHERE m.topic_id = t.id AND m.is_active = 1) AS material_count,
               COALESCE(pr.total_attempts, 0) AS total_attempts,
@@ -104,23 +132,17 @@ router.get('/subjects/:id/topics', apiAuth, async (req, res, next) => {
       [studentId, subjectId]
     );
 
-    const passingThreshold = Number(subject.passing_threshold);
-    const topics = rows.map((r) => {
-      const attempted = Number(r.total_attempts) > 0;
-      const mastery = attempted
-        ? Math.round((Number(r.correct_count) / Number(r.total_attempts)) * 100)
-        : 0;
+    const withThreshold = await attachThreshold(rows, subjectId);
+    const topicTree = buildTopicTree(withThreshold);
 
-      return {
-        id: r.id,
-        name: r.name,
-        description: r.description,
-        question_count: Number(r.question_count),
-        material_count: Number(r.material_count),
-        mastery,
-        is_weak: attempted && mastery < passingThreshold,
-      };
-    });
+    const countWeak = (nodes) => {
+      let w = 0;
+      for (const n of nodes) {
+        if (n.is_weak) w++;
+        w += countWeak(n.children);
+      }
+      return w;
+    };
 
     res.json({
       subject: {
@@ -130,17 +152,15 @@ router.get('/subjects/:id/topics', apiAuth, async (req, res, next) => {
         description: subject.description,
         color: subject.color,
         icon: subject.icon,
-        topic_count: topics.length,
-        question_count: topics.reduce((sum, t) => sum + t.question_count, 0),
-        weak_count: topics.filter((t) => t.is_weak).length,
+        topic_count: rows.filter(r => r.parent_id === null).length,
+        question_count: rows.reduce((sum, t) => sum + Number(t.question_count), 0),
+        weak_count: countWeak(topicTree),
       },
-      topics,
+      topics: topicTree,
     });
   } catch (err) { next(err); }
 });
 
-// Study materials attached to one topic, mirroring the web's
-// Student\SubjectController@topic + topic-materials.blade.php.
 router.get('/subjects/:id/topics/:topicId/materials', apiAuth, async (req, res, next) => {
   try {
     const subjectId = Number(req.params.id);
@@ -166,9 +186,6 @@ router.get('/subjects/:id/topics/:topicId/materials', apiAuth, async (req, res, 
       [topicId]
     );
 
-    // Uploaded files live on the Laravel public disk, served by XAMPP — not by
-    // this Express process. WEB_BASE_URL points at the Laravel public/ folder;
-    // by default we assume it sits on the same host this request came in on.
     const webBase = (process.env.WEB_BASE_URL || `http://${req.hostname}/CPACE/CPACE/public`).replace(/\/+$/, '');
 
     const materials = rows.map((m) => ({
@@ -203,7 +220,6 @@ router.get('/subjects/:id/topics/:topicId/materials', apiAuth, async (req, res, 
   } catch (err) { next(err); }
 });
 
-/** Human-readable file size, e.g. "1.4 MB" — same rounding as Material::humanSize(). */
 function humanSize(bytes) {
   const size = Number(bytes);
   if (!size) return null;
