@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import * as NativeSplash from 'expo-splash-screen';
 import { useFonts, Poppins_400Regular, Poppins_400Regular_Italic, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, Poppins_900Black } from '@expo-google-fonts/poppins';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/lib/context/auth-context';
 import { AiTutorProvider } from '@/lib/context/ai-tutor-context';
 import { MessagesProvider } from '@/lib/context/messages-context';
@@ -74,13 +75,15 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <AiTutorProvider>
-        <MessagesProvider>
-          <RootLayoutNav />
-          <StatusBar style="light" />
-        </MessagesProvider>
-      </AiTutorProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <AiTutorProvider>
+          <MessagesProvider>
+            <RootLayoutNav />
+            <StatusBar style="light" />
+          </MessagesProvider>
+        </AiTutorProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

@@ -4,7 +4,7 @@ import {
   RefreshControl, ActivityIndicator, Image, Modal, Pressable,
   TextInput, FlatList, Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -339,6 +339,7 @@ function ContinueLearningCard({ readiness, points, streak, onPress }: {
 export default function DashboardScreen() {
   const { user, logout }  = useAuth();
   const { unreadCount: msgUnread } = useMessages();
+  const insets = useSafeAreaInsets();
   const router            = useRouter();
   const [data, setData]         = useState<DashboardData | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -606,7 +607,7 @@ export default function DashboardScreen() {
 
       {/* ── Notifications modal ── */}
       <Modal visible={notifOpen} animationType="slide" onRequestClose={() => { setSelectedNotif(null); setNotifOpen(false); }}>
-        <SafeAreaView style={styles.notifModalSafe} edges={['top']}>
+        <View style={[styles.notifModalSafe, { paddingTop: insets.top }]}>
           {/* ── Detail view ── */}
           {selectedNotif ? (
             <>
@@ -714,7 +715,7 @@ export default function DashboardScreen() {
               )}
             </>
           )}
-        </SafeAreaView>
+        </View>
       </Modal>
 
       <ScrollView
