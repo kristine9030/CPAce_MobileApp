@@ -41,6 +41,37 @@ const shapeEvent = (row) => ({
   duration_hours: Number(row.duration_hours),
 });
 
+// Port of topicMeta: per-topic accuracy + the same weak-area flag used by the
+// quiz engine and Performance page, so review priority matches the web app
+// (weak topics always surface first, regardless of how many questions are due).
+async function topicMeta(studentId) {
+  const rows = await q(
+    `SELECT pr.topic_id, pr.correct_count, pr.total_attempts, pr.consecutive_wrong
+       FROM performance_records pr
+      WHERE pr.student_id = ?`,
+    [studentId]
+  );
+  const meta = new Map();
+  for (const r of rows) {
+    const [isWeak] = weakness.evaluate(r);
+    const attempts = Number(r.total_attempts);
+    meta.set(Number(r.topic_id), {
+      accuracy: attempts > 0 ? Math.round((Number(r.correct_count) / attempts) * 100) : null,
+      isWeak,
+    });
+  }
+  return meta;
+}
+
+// Port of makeEvent's priority ranking: weak topic -> High(3), accuracy < 75 ->
+// Medium(2), else Low(1). Same thresholds as the web's CalendarApiController.
+function priorityFor(meta) {
+  if (!meta) return { priority: 'Low', priority_rank: 1, is_weak: false };
+  if (meta.isWeak) return { priority: 'High', priority_rank: 3, is_weak: true };
+  if (meta.accuracy != null && meta.accuracy < 75) return { priority: 'Medium', priority_rank: 2, is_weak: false };
+  return { priority: 'Low', priority_rank: 1, is_weak: false };
+}
+
 // Port of ensureSchedule: sync weakness flags, then seed spaced_repetition_items
 // from historical performance if the student has none yet.
 async function ensureSchedule(studentId) {
@@ -118,14 +149,21 @@ router.get('/calendar', apiAuth, async (req, res, next) => {
       [studentId]
     );
 
-    // byDate[date][topicId] = { topic, subject_code, count }
+    const meta = await topicMeta(studentId);
+
+    // byDate[date][topicId] = { topic, subject_code, count, priority, priority_rank, is_weak }
     const byDate = new Map();
     for (const it of items) {
       const date = String(it.next_review_at).slice(0, 10);
       if (!byDate.has(date)) byDate.set(date, new Map());
       const topics = byDate.get(date);
       if (!topics.has(it.topic_id)) {
-        topics.set(it.topic_id, { topic: it.topic, subject_code: it.subject_code, count: 0 });
+        topics.set(it.topic_id, {
+          topic: it.topic,
+          subject_code: it.subject_code,
+          count: 0,
+          ...priorityFor(meta.get(it.topic_id)),
+        });
       }
       topics.get(it.topic_id).count++;
     }
@@ -144,9 +182,13 @@ router.get('/calendar', apiAuth, async (req, res, next) => {
       if (topics) {
         for (const [topicId, t] of topics) {
           reviewCount += t.count;
-          events.push({ id: Number(topicId), topic: t.topic, subject_code: t.subject_code, count: t.count });
+          events.push({
+            id: Number(topicId), topic: t.topic, subject_code: t.subject_code, count: t.count,
+            priority: t.priority, priority_rank: t.priority_rank, is_weak: t.is_weak,
+          });
         }
-        events.sort((a, b) => b.count - a.count);
+        // Weak topics first (matches the web's priority ranking), not just whichever has the most questions due.
+        events.sort((a, b) => b.priority_rank - a.priority_rank);
       }
       days.push({
         date: ds,
@@ -165,14 +207,23 @@ router.get('/calendar', apiAuth, async (req, res, next) => {
       if (parseSql(date) > todayStart) continue;
       for (const [topicId, event] of topics) {
         if (!dueByTopic.has(topicId)) {
-          dueByTopic.set(topicId, { id: Number(topicId), topic: event.topic, subject_code: event.subject_code, count: 0 });
+          dueByTopic.set(topicId, {
+            id: Number(topicId), topic: event.topic, subject_code: event.subject_code, count: 0,
+            priority: event.priority, priority_rank: event.priority_rank, is_weak: event.is_weak,
+          });
         }
         dueByTopic.get(topicId).count += event.count;
       }
     }
+    // Weak/high-priority topics first — matches the web app, which surfaces
+    // urgency over sheer question count.
     const todayReviews = [...dueByTopic.values()]
-      .sort((a, b) => b.count - a.count)
-      .map((e) => ({ id: e.id, topic: e.topic, subject_code: e.subject_code, due_at: new Date().toISOString() }));
+      .sort((a, b) => b.priority_rank - a.priority_rank)
+      .map((e) => ({
+        id: e.id, topic: e.topic, subject_code: e.subject_code,
+        priority: e.priority, is_weak: e.is_weak,
+        due_at: new Date().toISOString(),
+      }));
 
     // Upcoming: next 7 days.
     const upcoming = [];
@@ -182,7 +233,10 @@ router.get('/calendar', apiAuth, async (req, res, next) => {
       if (!topics) continue;
       for (const event of topics.values()) {
         if (upcoming.length >= 6) break;
-        upcoming.push({ date: ds, topic: event.topic, subject_code: event.subject_code });
+        upcoming.push({
+          date: ds, topic: event.topic, subject_code: event.subject_code,
+          priority: event.priority, is_weak: event.is_weak,
+        });
       }
     }
 

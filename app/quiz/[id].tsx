@@ -10,17 +10,19 @@ import client from '@/lib/api/client';
 import { C, sp, r, font, grad } from '@/constants/cpace-theme';
 import { GradientButton, GradientFill } from '@/components/ui/gradient';
 
-interface Option { id: number; letter: string; text: string }
+interface Option { id: number; letter: string; text: string; is_correct?: boolean }
 interface Question {
   item_number: number;
   question_id: number;
   question_text: string;
   question_type: string;
+  explanation?: string;
   options: Option[];
 }
 interface Session {
   session_id: number;
   mode: string;
+  session_type: string;
   time_limit: number | null;
   questions: Question[];
   total_items: number;
@@ -33,6 +35,7 @@ export default function TakeQuizScreen() {
   const [loading, setLoading]   = useState(true);
   const [current, setCurrent]   = useState(0);
   const [answers, setAnswers]   = useState<Record<number, number>>({});
+  const [revealed, setRevealed] = useState<Record<number, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft]     = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -69,7 +72,11 @@ export default function TakeQuizScreen() {
   }, [timeLeft !== null]);
 
   const handleSelect = (questionId: number, optionId: number) => {
+    if (session?.session_type === 'training' && revealed[questionId]) return;
     setAnswers(prev => ({ ...prev, [questionId]: optionId }));
+    if (session?.session_type === 'training') {
+      setRevealed(prev => ({ ...prev, [questionId]: true }));
+    }
   };
 
   const handleSubmit = async (auto = false) => {
@@ -127,6 +134,7 @@ export default function TakeQuizScreen() {
   const total  = session.questions.length;
   const answered = Object.keys(answers).length;
   const progress = current / (total - 1);
+  const isTraining = session.session_type === 'training';
 
   return (
     <SafeAreaView style={s.safe}>
@@ -154,11 +162,20 @@ export default function TakeQuizScreen() {
 
         {q.options.map((opt) => {
           const selected = answers[q.question_id] === opt.id;
+          const isRevealed = isTraining && revealed[q.question_id];
+          const showCorrect = isRevealed && opt.is_correct;
+          const showWrong = isRevealed && selected && !opt.is_correct;
           return (
             <TouchableOpacity
               key={opt.id}
-              style={[s.option, selected && s.optionSelected]}
+              style={[
+                s.option,
+                selected && s.optionSelected,
+                showCorrect && s.optionCorrect,
+                showWrong && s.optionWrong,
+              ]}
               onPress={() => handleSelect(q.question_id, opt.id)}
+              disabled={isRevealed}
             >
               {selected ? (
                 <GradientFill style={[s.optLetter, s.optLetterSelected]}>
@@ -170,9 +187,21 @@ export default function TakeQuizScreen() {
                 </View>
               )}
               <Text style={[s.optText, selected && s.optTextSelected]}>{opt.text}</Text>
+              {showCorrect && <Ionicons name="checkmark-circle" size={20} color="#2e9e5b" />}
+              {showWrong && <Ionicons name="close-circle" size={20} color="#d64545" />}
             </TouchableOpacity>
           );
         })}
+
+        {isTraining && revealed[q.question_id] && (
+          <View style={s.feedbackPanel}>
+            <Text style={s.feedbackTitle}>
+              {answers[q.question_id] != null && q.options.find(o => o.id === answers[q.question_id])?.is_correct
+                ? 'Correct!' : 'Incorrect.'}
+            </Text>
+            {!!q.explanation && <Text style={s.feedbackText}>{q.explanation}</Text>}
+          </View>
+        )}
       </ScrollView>
 
       {/* Bottom Nav */}
@@ -226,6 +255,11 @@ const s = StyleSheet.create({
   questionText:     { fontSize: 16, lineHeight: 24, color: C.text, fontFamily: font.semiBold, marginBottom: sp.lg },
   option:           { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.md, marginBottom: sp.sm, borderWidth: 1, borderColor: C.border, },
   optionSelected:   { borderColor: C.accent, backgroundColor: 'rgba(165,32,32,0.04)' },
+  optionCorrect:    { borderColor: '#2e9e5b', backgroundColor: 'rgba(46,158,91,0.08)' },
+  optionWrong:      { borderColor: '#d64545', backgroundColor: 'rgba(214,69,69,0.08)' },
+  feedbackPanel:    { borderRadius: r.lg, padding: sp.md, backgroundColor: 'rgba(0,0,0,0.03)', borderWidth: 1, borderColor: C.border, marginTop: sp.xs },
+  feedbackTitle:    { fontSize: 14, fontFamily: font.bold, color: C.text, marginBottom: 4 },
+  feedbackText:     { fontSize: 13, fontFamily: font.regular, color: C.muted, lineHeight: 19 },
   optLetter:        { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: C.border, justifyContent: 'center', alignItems: 'center', marginRight: sp.sm },
   optLetterSelected:{ borderColor: 'transparent', overflow: 'hidden' },
   optLetterText:    { fontSize: 13, fontFamily: font.bold, color: C.muted },

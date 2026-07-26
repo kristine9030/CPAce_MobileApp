@@ -28,6 +28,9 @@ router.get('/dashboard', apiAuth, async (req, res, next) => {
     const [secs] = await q("SELECT COALESCE(SUM(duration_secs),0) v FROM quiz_sessions WHERE student_id = ? AND session_type != 'training'", [studentId]);
     const [secsWeek] = await q("SELECT COALESCE(SUM(duration_secs),0) v FROM quiz_sessions WHERE student_id = ? AND session_type != 'training' AND started_at >= ?", [studentId, weekAgo]);
 
+    // Board readiness = overall accuracy (matches the web Dashboard's own
+    // comment/formula — a different, simpler number than the per-subject
+    // "readinessScore" used on the web's Performance/Calendar pages).
     const agg = await one('SELECT COALESCE(SUM(correct_count),0) c, COALESCE(SUM(total_attempts),0) t FROM performance_records WHERE student_id = ?', [studentId]);
     const readiness = agg && Number(agg.t) > 0 ? Math.round((Number(agg.c) / Number(agg.t)) * 100) : 0;
 

@@ -18,7 +18,7 @@ interface DayInfo {
   review_count: number;
   is_today: boolean;
   is_past: boolean;
-  events?: { id: number; topic: string; subject_code: string; count: number }[];
+  events?: { id: number; topic: string; subject_code: string; count: number; priority?: string; is_weak?: boolean }[];
 }
 
 interface StudyEvent {
@@ -36,8 +36,8 @@ interface CalendarData {
   month_name: string;
   days: DayInfo[];
   custom_events?: StudyEvent[];
-  today_reviews: { id: number; topic: string; subject_code: string; due_at: string }[];
-  upcoming: { date: string; topic: string; subject_code: string }[];
+  today_reviews: { id: number; topic: string; subject_code: string; due_at: string; priority?: string; is_weak?: boolean }[];
+  upcoming: { date: string; topic: string; subject_code: string; priority?: string; is_weak?: boolean }[];
 }
 
 interface TopicLite   { id: number; name: string; question_count?: number }
@@ -95,6 +95,7 @@ interface Block {
   end: number;
   custom: boolean;
   eventId?: number;     // custom events only — needed to delete
+  is_weak?: boolean;    // flagged as a weak topic — same rule the Performance page uses
   lane?: number;
   lanes?: number;
 }
@@ -181,6 +182,7 @@ export default function CalendarScreen() {
           topic: named[i]?.topic ?? 'Spaced review',
           subject_code: named[i]?.subject_code ?? '',
           count: Math.max(1, Math.round(day.review_count / n)),
+          is_weak: named[i]?.is_weak,
         }));
       }
       events.slice(0, MAX_BLOCKS).forEach((e, i) => out.push({
@@ -191,6 +193,7 @@ export default function CalendarScreen() {
         start: FIRST_SLOT + i,
         end: FIRST_SLOT + i + 1,
         custom: false,
+        is_weak: e.is_weak,
       }));
     }
 
@@ -488,6 +491,7 @@ export default function CalendarScreen() {
                 code={b.code}
                 when={`${fmtHour(b.start)} – ${fmtHour(b.end)}`}
                 custom={b.custom}
+                isWeak={b.is_weak}
                 onPress={() => setDetail({ ...b, date: selected })}
               />
             ))}
@@ -524,6 +528,7 @@ export default function CalendarScreen() {
                     code={b.code}
                     when={`${fmtHour(b.start)} – ${fmtHour(b.end)}`}
                     custom={b.custom}
+                    isWeak={b.is_weak}
                     onPress={() => { setDayOpen(false); setDetail({ ...b, date: selected }); }}
                   />
                 ))}
@@ -567,6 +572,12 @@ export default function CalendarScreen() {
                         ? 'Study block you added'
                         : `${detail.count} question${detail.count === 1 ? '' : 's'} due`}
                     </Text>
+                    {!detail.custom && detail.is_weak && (
+                      <View style={[s.sheetChip, { backgroundColor: C.danger + '18', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                        <Ionicons name="flame" size={12} color={C.danger} />
+                        <Text style={[s.sheetChipText, { color: C.danger }]}>Weak topic</Text>
+                      </View>
+                    )}
                   </View>
                   <GradientButton
                     radius={r.md}
@@ -805,15 +816,18 @@ function MonthGrid({ anchor, data, selected, today, blocksFor, onPick }: {
   );
 }
 
-function AgendaRow({ title, code, when, custom, onPress }: {
-  title: string; code: string; when?: string; custom?: boolean; onPress: () => void;
+function AgendaRow({ title, code, when, custom, isWeak, onPress }: {
+  title: string; code: string; when?: string; custom?: boolean; isWeak?: boolean; onPress: () => void;
 }) {
   const col = colorFor(code || title);
   return (
     <TouchableOpacity style={s.agendaRow} activeOpacity={0.75} onPress={onPress}>
       <View style={[s.agendaBar, { backgroundColor: col.bar }]} />
       <View style={{ flex: 1 }}>
-        <Text style={s.agendaTopic} numberOfLines={1}>{title}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <Text style={s.agendaTopic} numberOfLines={1}>{title}</Text>
+          {isWeak && <Ionicons name="flame" size={13} color={C.danger} />}
+        </View>
         <Text style={s.agendaSub}>{[code, when].filter(Boolean).join(' · ')}</Text>
       </View>
       {custom && <Ionicons name="person-circle-outline" size={15} color={C.light} style={{ marginRight: 4 }} />}

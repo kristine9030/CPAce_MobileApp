@@ -17,8 +17,6 @@ const router = express.Router();
 const MODES = ['adaptive', 'topic', 'timed', 'challenge'];
 const MAX_QUIZ_LENGTH = 100;
 const TIMED_SECONDS_PER_QUESTION = 30; // mobile timed sprint: 30s per question
-const TIMED_COUNT = 10;
-const CHALLENGE_COUNT = 20;
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 // ── Question selection (port of selectQuestions on the web) ────────────────
@@ -173,21 +171,26 @@ router.post('/quizzes/start', apiAuth, async (req, res, next) => {
     const mode = MODES.includes(body.mode) ? body.mode : 'adaptive';
     const sessionType = ['training', 'testing'].includes(body.session_type) ? body.session_type : 'testing';
 
-    let count = Math.max(1, Math.min(Number(body.num_items ?? body.count) || 10, MAX_QUIZ_LENGTH));
-    if (mode === 'timed') count = TIMED_COUNT;
-    if (mode === 'challenge') count = CHALLENGE_COUNT;
+    const count = Math.max(1, Math.min(Number(body.num_items ?? body.count) || 10, MAX_QUIZ_LENGTH));
 
-    let subjectId = body.subject_id != null ? Number(body.subject_id) : null;
-    if (subjectId) {
-      const subject = await one('SELECT id FROM subjects WHERE id = ? AND is_active = 1', [subjectId]);
-      if (!subject) return res.status(422).json({ message: 'Invalid subject.' });
-    }
-    if (mode === 'topic' && !subjectId) {
-      return res.status(422).json({ message: 'Please choose a subject for Topic mode.' });
-    }
+    // Accept either a single subject_id (legacy) or a subject_ids[] array (multi-select, topic mode).
+    const rawSubjectIds = Array.isArray(body.subject_ids)
+      ? body.subject_ids
+      : (body.subject_id != null ? [body.subject_id] : []);
+    const subjectIds = [...new Set(rawSubjectIds.map(Number).filter((n) => Number.isFinite(n)))];
 
-    const topicRows = subjectId
-      ? await q('SELECT id FROM topics WHERE subject_id = ? AND is_active = 1', [subjectId])
+    if (subjectIds.length) {
+      const rows = await q('SELECT id FROM subjects WHERE id IN (?) AND is_active = 1', [subjectIds]);
+      if (rows.length !== subjectIds.length) return res.status(422).json({ message: 'Invalid subject.' });
+    }
+    if (mode === 'topic' && !subjectIds.length) {
+      return res.status(422).json({ message: 'Please choose at least one subject for Topic mode.' });
+    }
+    // A single chosen subject is stored on the session; multiple subjects means a "mixed" session (null).
+    const subjectId = subjectIds.length === 1 ? subjectIds[0] : null;
+
+    const topicRows = subjectIds.length
+      ? await q('SELECT id FROM topics WHERE subject_id IN (?) AND is_active = 1', [subjectIds])
       : await q('SELECT id FROM topics WHERE is_active = 1');
     const topicIds = topicRows.map((r) => r.id);
 
@@ -260,10 +263,12 @@ router.get('/quizzes/:id(\\d+)', apiAuth, async (req, res, next) => {
     if (session.completed_at) return res.status(422).json({ message: 'This quiz is already completed.' });
 
     const presented = await loadPresentedQuestions(session.id);
+    const isTraining = session.session_type === 'training';
 
     res.json({
       session_id: session.id,
       mode: session.mode,
+      session_type: session.session_type,
       time_limit: timeLimitMinutes(session, presented.length),
       total_items: presented.length,
       questions: presented.map((p, i) => ({
@@ -271,7 +276,15 @@ router.get('/quizzes/:id(\\d+)', apiAuth, async (req, res, next) => {
         question_id: p.id,
         question_text: p.display_text,
         question_type: p.question_type,
-        options: p.choices.map((c) => ({ id: c.id, letter: c.letter, text: c.text })),
+        // Testing mode never leaks correctness ahead of the results screen; training
+        // mode reveals it immediately after the student answers each question.
+        explanation: isTraining ? p.explanation : undefined,
+        options: p.choices.map((c) => ({
+          id: c.id,
+          letter: c.letter,
+          text: c.text,
+          is_correct: isTraining ? c.is_correct : undefined,
+        })),
       })),
     });
   } catch (err) { next(err); }

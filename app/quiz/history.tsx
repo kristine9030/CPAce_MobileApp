@@ -71,7 +71,10 @@ export default function QuizHistoryScreen() {
                 <Text style={[s.modeText, { color: modeColor }]}>{MODES[item.mode] ?? item.mode}</Text>
               </View>
               <View style={s.middle}>
-                <Text style={s.subject}>{item.subject_code ?? 'Mixed'}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={s.subject}>{item.subject_code ?? 'Mixed'}</Text>
+                  {item.session_type === 'training' && <Text style={s.trainingBadge}>Training</Text>}
+                </View>
                 <Text style={s.detail}>{item.correct_answers} / {item.total_items} correct</Text>
                 <Text style={s.date}>{fmtDate(item.started_at)}</Text>
               </View>
@@ -110,6 +113,7 @@ const s = StyleSheet.create({
   modeText:  { fontSize: 11, fontFamily: font.bold },
   middle:    { flex: 1 },
   subject:   { fontSize: 14, fontFamily: font.bold, color: C.text },
+  trainingBadge: { fontSize: 10, fontFamily: font.semiBold, color: C.muted, backgroundColor: 'rgba(0,0,0,0.05)', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 },
   detail:    { fontSize: 12, fontFamily: font.regular, color: C.muted },
   date:      { fontSize: 11, fontFamily: font.regular, color: C.light, marginTop: 2 },
   score:     { fontSize: 20, fontFamily: font.extraBold, marginRight: sp.sm },

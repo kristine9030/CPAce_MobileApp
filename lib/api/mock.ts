@@ -181,6 +181,7 @@ interface SessionQuestion {
 interface MockSession {
   session_id: number;
   mode: string;
+  session_type: string;
   subject_id: number | null;
   time_limit: number | null;  // minutes
   questions: SessionQuestion[];
@@ -193,9 +194,9 @@ const sessions = new Map<number, MockSession>();
 
 const LETTERS = ['A', 'B', 'C', 'D'];
 
-function buildQuestions(count: number, subjectId: number | null): SessionQuestion[] {
-  const code = subjectId ? SUBJECTS.find(s => s.id === subjectId)?.code : null;
-  let pool = code ? BANK.filter(q => q.subject_code === code) : [...BANK];
+function buildQuestions(count: number, subjectIds: number[]): SessionQuestion[] {
+  const codes = subjectIds.map(id => SUBJECTS.find(s => s.id === id)?.code).filter(Boolean) as string[];
+  let pool = codes.length ? BANK.filter(q => codes.includes(q.subject_code)) : [...BANK];
   if (pool.length === 0) pool = [...BANK];
   // shuffle
   pool = pool.sort(() => Math.random() - 0.5);
@@ -271,7 +272,7 @@ function gradeSession(sess: MockSession, answers: Array<{ question_id: number; s
   HISTORY.unshift({
     id: sess.session_id,
     mode: sess.mode,
-    session_type: 'quiz',
+    session_type: sess.session_type,
     total_items: total,
     correct_answers: correct,
     score_percent: scorePct,
@@ -309,10 +310,10 @@ interface HistoryRow {
 }
 
 const HISTORY: HistoryRow[] = [
-  { id: 1, mode: 'adaptive',  session_type: 'quiz', total_items: 10, correct_answers: 8,  score_percent: 80, started_at: '2026-06-28T10:00:00Z', completed_at: '2026-06-28T10:15:00Z', subject_code: 'FAR'  },
-  { id: 2, mode: 'topic',     session_type: 'quiz', total_items: 15, correct_answers: 9,  score_percent: 60, started_at: '2026-06-27T14:00:00Z', completed_at: '2026-06-27T14:20:00Z', subject_code: 'MAS'  },
-  { id: 3, mode: 'timed',     session_type: 'quiz', total_items: 10, correct_answers: 6,  score_percent: 60, started_at: '2026-06-26T09:00:00Z', completed_at: '2026-06-26T09:12:00Z', subject_code: 'AUD'  },
-  { id: 4, mode: 'challenge', session_type: 'quiz', total_items: 20, correct_answers: 14, score_percent: 70, started_at: '2026-06-25T16:00:00Z', completed_at: '2026-06-25T16:30:00Z', subject_code: null   },
+  { id: 1, mode: 'adaptive',  session_type: 'testing', total_items: 10, correct_answers: 8,  score_percent: 80, started_at: '2026-06-28T10:00:00Z', completed_at: '2026-06-28T10:15:00Z', subject_code: 'FAR'  },
+  { id: 2, mode: 'topic',     session_type: 'testing', total_items: 15, correct_answers: 9,  score_percent: 60, started_at: '2026-06-27T14:00:00Z', completed_at: '2026-06-27T14:20:00Z', subject_code: 'MAS'  },
+  { id: 3, mode: 'timed',     session_type: 'testing', total_items: 10, correct_answers: 6,  score_percent: 60, started_at: '2026-06-26T09:00:00Z', completed_at: '2026-06-26T09:12:00Z', subject_code: 'AUD'  },
+  { id: 4, mode: 'challenge', session_type: 'testing', total_items: 20, correct_answers: 14, score_percent: 70, started_at: '2026-06-25T16:00:00Z', completed_at: '2026-06-25T16:30:00Z', subject_code: null   },
 ];
 
 // Canned results for seeded history rows that pre-date the grading engine.
@@ -320,7 +321,7 @@ const cannedResults = (id: number) => {
   const row = HISTORY.find(h => h.id === id);
   const total = row?.total_items ?? 10;
   const correct = row?.correct_answers ?? 7;
-  const qs = buildQuestions(Math.min(total, 5), null);
+  const qs = buildQuestions(Math.min(total, 5), []);
   return {
     session_id: id,
     mode: row?.mode ?? 'adaptive',
@@ -526,15 +527,20 @@ export async function mockRequest(method: string, url: string, body?: any): Prom
 
   if (method === 'POST' && url === '/quizzes/start') {
     const mode: string = body?.mode ?? 'adaptive';
-    const numItems = mode === 'timed' ? 10 : mode === 'challenge' ? 20 : Number(body?.num_items) || 10;
-    const subjectId = body?.subject_id ? Number(body.subject_id) : null;
+    const sessionType: string = ['training', 'testing'].includes(body?.session_type) ? body.session_type : 'testing';
+    const numItems = Math.max(1, Math.min(Number(body?.num_items) || 10, 100));
+    const subjectIds: number[] = Array.isArray(body?.subject_ids)
+      ? body.subject_ids.map(Number)
+      : (body?.subject_id ? [Number(body.subject_id)] : []);
+    const subjectId = subjectIds.length === 1 ? subjectIds[0] : null;
     const id = sessionSeq++;
     sessions.set(id, {
       session_id: id,
       mode,
+      session_type: sessionType,
       subject_id: subjectId,
-      time_limit: mode === 'timed' ? 5 : null,   // 10 questions × 30s
-      questions: buildQuestions(numItems, subjectId),
+      time_limit: mode === 'timed' ? Math.max(1, Math.ceil((numItems * 30) / 60)) : null,
+      questions: buildQuestions(numItems, subjectIds),
       started_at: new Date().toISOString(),
       results: null,
     });
@@ -551,13 +557,19 @@ export async function mockRequest(method: string, url: string, body?: any): Prom
   if (method === 'GET' && quizMatch) {
     const sess = sessions.get(Number(quizMatch[1]));
     if (!sess) throw new Error('Quiz session not found.');
+    const isTraining = sess.session_type === 'training';
     return {
       session_id: sess.session_id,
       mode: sess.mode,
+      session_type: sess.session_type,
       time_limit: sess.time_limit,
       total_items: sess.questions.length,
-      // strip answer key before sending to the client
-      questions: sess.questions.map(({ correct_option_id, explanation, topic, ...q }) => q),
+      // testing mode never leaks the answer key ahead of the results screen
+      questions: sess.questions.map(({ correct_option_id, explanation, topic, options, ...q }) => ({
+        ...q,
+        explanation: isTraining ? explanation : undefined,
+        options: options.map(o => ({ ...o, is_correct: isTraining ? o.id === correct_option_id : undefined })),
+      })),
     };
   }
 
