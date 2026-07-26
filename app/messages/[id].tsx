@@ -113,6 +113,7 @@ export default function ChatThreadScreen() {
 
   // Load messages
   const loadMessages = useCallback(async () => {
+    if (!Number.isFinite(conversationId)) return;
     try {
       const res = await client.get(`/messages/${conversationId}`);
       const msgs: Message[] = res.data.messages ?? [];
@@ -127,6 +128,7 @@ export default function ChatThreadScreen() {
   }, [conversationId]);
 
   useEffect(() => {
+    if (!Number.isFinite(conversationId)) return;
     loadMessages();
     joinConversation(conversationId);
     return () => { leaveConversation(conversationId); };

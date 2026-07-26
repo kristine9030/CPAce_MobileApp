@@ -90,12 +90,11 @@ export default function TopicMaterialsScreen() {
       Alert.alert('Unavailable', 'This material has no file or link attached yet.');
       return;
     }
-    const ok = await Linking.canOpenURL(material.url);
-    if (!ok) {
+    try {
+      await Linking.openURL(material.url);
+    } catch {
       Alert.alert('Cannot open', 'No app on this device can open this material.');
-      return;
     }
-    Linking.openURL(material.url);
   };
 
   const accent = subject?.color || C.primary;

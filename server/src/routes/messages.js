@@ -199,6 +199,7 @@ router.get('/messages/:id', apiAuth, async (req, res, next) => {
   try {
     const userId = req.user.id;
     const conversationId = Number(req.params.id);
+    if (!Number.isFinite(conversationId)) return res.status(400).json({ message: 'Invalid conversation id.' });
 
     // Verify user is a participant
     const membership = await one(
