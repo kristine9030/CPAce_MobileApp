@@ -173,20 +173,6 @@ export default function SignupScreen() {
                 </LinearGradient>
               </TouchableOpacity>
 
-              {/* Divider */}
-              <View style={s.divider}>
-                <View style={s.dividerLine} />
-                <Text style={s.dividerText}>or</Text>
-                <View style={s.dividerLine} />
-              </View>
-
-              {/* Google sign-up */}
-              <TouchableOpacity style={s.googleBtn} activeOpacity={0.8}
-                onPress={() => Alert.alert('Coming Soon', 'Google sign-up will be available soon.')}>
-                <Image source={{ uri: 'https://www.gstatic.com/images/branding/googleg/2x/googleg_standard_color_128dp.png' }} style={s.socialLogo} />
-                <Text style={s.socialText}>Continue with Google</Text>
-              </TouchableOpacity>
-
               {/* Sign in link */}
               <View style={s.linkRow}>
                 <Text style={s.linkText}>Already have an account? </Text>
@@ -242,20 +228,6 @@ const s = StyleSheet.create({
   btn:      { borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
   btnOff:   { opacity: 0.7 },
   btnText:  { color: '#fff', fontSize: 16, fontFamily: F.bold },
-
-  // Divider
-  divider:     { flexDirection: 'row', alignItems: 'center', marginVertical: 20, gap: 10 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: '#E5E5E5' },
-  dividerText: { fontSize: 12, fontFamily: F.regular, color: C.muted },
-
-  // Google
-  googleBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 10, paddingVertical: 14, borderRadius: 12,
-    backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E5E5E5',
-  },
-  socialLogo: { width: 20, height: 20, resizeMode: 'contain' },
-  socialText: { fontSize: 15, fontFamily: F.semiBold, color: C.text },
 
   // Link
   linkRow:  { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 22 },
