@@ -10,6 +10,14 @@ import client from '@/lib/api/client';
 import { C, sp, r, sh, font, type, grad } from '@/constants/cpace-theme';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { GradientBorder, GradientButton, GradientFill } from '@/components/ui/gradient';
+import { getLiveRoomPref, setLiveRoomPref, getRoomModePref, setRoomModePref } from '@/lib/liveRoom';
+
+const PRACTICE_DIFFICULTIES = [
+  { key: 'easy',       label: 'Easy' },
+  { key: 'average',    label: 'Average' },
+  { key: 'challenger', label: 'Challenger' },
+  { key: 'top',        label: 'Top-Performer' },
+] as const;
 
 interface Subject { id: number; code: string; name: string; color: string }
 
@@ -40,6 +48,13 @@ export default function QuizzesScreen() {
   const [loading, setLoading]                 = useState(true);
   const [starting, setStarting]               = useState(false);
 
+  // Live Room: four AI candidates race the student through the quiz. Purely
+  // cosmetic on Ranked; opting into Practice swaps in a user-picked
+  // difficulty and excludes the session from analytics (see server).
+  const [liveRoomOn, setLiveRoomOn]           = useState(true);
+  const [roomMode, setRoomMode]               = useState<'ranked' | 'practice'>('ranked');
+  const [practiceDifficulty, setPracticeDifficulty] = useState<string>('average');
+
   const load = useCallback(async () => {
     try {
       const res = await client.get('/subjects');
@@ -49,6 +64,13 @@ export default function QuizzesScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  useFocusEffect(useCallback(() => {
+    (async () => {
+      setLiveRoomOn(await getLiveRoomPref());
+      setRoomMode(await getRoomModePref());
+    })();
+  }, []));
 
   const toggleSubject = (id: number) => {
     setSelectedSubjects((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
@@ -60,6 +82,15 @@ export default function QuizzesScreen() {
     if (Number.isFinite(n) && n > 0) setNumItems(Math.max(1, Math.min(n, MAX_ITEMS)));
   };
 
+  const toggleLiveRoom = (on: boolean) => {
+    setLiveRoomOn(on);
+    setLiveRoomPref(on);
+  };
+  const selectRoomMode = (m: 'ranked' | 'practice') => {
+    setRoomMode(m);
+    setRoomModePref(m);
+  };
+
   const startQuiz = async () => {
     if (mode === 'topic' && selectedSubjects.length === 0) {
       Alert.alert('Select a Subject', 'Please choose at least one subject for Topic mode.');
@@ -69,8 +100,15 @@ export default function QuizzesScreen() {
     try {
       const payload: Record<string, any> = { mode, num_items: numItems, session_type: sessionType };
       if (mode === 'topic' && selectedSubjects.length) payload.subject_ids = selectedSubjects;
+      if (liveRoomOn && roomMode === 'practice') {
+        payload.is_practice_room = true;
+        payload.practice_difficulty = practiceDifficulty;
+      }
       const res = await client.post('/quizzes/start', payload);
-      router.push({ pathname: '/quiz/[id]', params: { id: String(res.data.session_id) } });
+      router.push({
+        pathname: '/quiz/[id]',
+        params: { id: String(res.data.session_id), liveRoom: liveRoomOn ? '1' : '0' },
+      });
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Could not start quiz.');
     } finally {
@@ -210,6 +248,69 @@ export default function QuizzesScreen() {
           );
         })}
 
+        {/* Live Room: simulated AI candidates race you through the quiz */}
+        <Text style={s.sectionTitle}>Live Room</Text>
+        <TouchableOpacity
+          style={[s.liveRoomToggle, liveRoomOn && s.liveRoomToggleOn]}
+          onPress={() => toggleLiveRoom(!liveRoomOn)}
+          activeOpacity={0.85}
+        >
+          <View style={[s.modeIcon, { backgroundColor: liveRoomOn ? C.primary : C.border }]}>
+            <Ionicons name="radio" size={20} color={liveRoomOn ? C.white : C.muted} />
+          </View>
+          <View style={{ flex: 1, marginLeft: sp.md }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={s.modeLabel}>Live Room</Text>
+              <View style={s.newBadge}><Text style={s.newBadgeText}>New</Text></View>
+            </View>
+            <Text style={s.modeDesc}>
+              Four AI candidates take the quiz alongside you — and they are meant to beat you.
+              Never affects your score.
+            </Text>
+          </View>
+          <View style={[s.switchTrack, liveRoomOn && s.switchTrackOn]}>
+            <View style={[s.switchThumb, liveRoomOn && s.switchThumbOn]} />
+          </View>
+        </TouchableOpacity>
+
+        {liveRoomOn && (
+          <View style={s.roomModeRow}>
+            <TouchableOpacity
+              style={[s.roomModeCard, roomMode === 'ranked' && s.roomModeCardActive]}
+              onPress={() => selectRoomMode('ranked')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Ionicons name="stats-chart" size={14} color={roomMode === 'ranked' ? C.primary : C.muted} />
+                <Text style={[s.roomModeTitle, roomMode === 'ranked' && s.roomModeTitleActive]}>Ranked Room</Text>
+              </View>
+              <Text style={s.roomModeDesc}>Rivals are calibrated from real top-performer data. Counts toward your records.</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.roomModeCard, roomMode === 'practice' && s.roomModeCardActive]}
+              onPress={() => selectRoomMode('practice')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Ionicons name="options" size={14} color={roomMode === 'practice' ? C.primary : C.muted} />
+                <Text style={[s.roomModeTitle, roomMode === 'practice' && s.roomModeTitleActive]}>Practice Room</Text>
+              </View>
+              <Text style={s.roomModeDesc}>Pick the rivals' difficulty yourself. For training only — not counted in your records.</Text>
+              {roomMode === 'practice' && (
+                <View style={s.diffRow}>
+                  {PRACTICE_DIFFICULTIES.map((d) => (
+                    <TouchableOpacity
+                      key={d.key}
+                      style={[s.diffChip, practiceDifficulty === d.key && s.diffChipActive]}
+                      onPress={() => setPracticeDifficulty(d.key)}
+                    >
+                      <Text style={[s.diffChipText, practiceDifficulty === d.key && s.diffChipTextActive]}>{d.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Number of Items — same picker for every mode, up to 100 like the web version */}
         <Text style={s.sectionTitle}>Number of Questions</Text>
         <View style={s.numRow}>
@@ -294,6 +395,25 @@ const s = StyleSheet.create({
   customLabel:   { fontSize: 13, fontFamily: font.medium, color: C.muted },
   customInput:   { flex: 1, paddingHorizontal: sp.md, paddingVertical: 8, borderRadius: r.md, backgroundColor: 'rgba(255,255,255,0.78)', borderWidth: 1, borderColor: C.border, fontSize: 15, fontFamily: font.semiBold, color: C.text },
   noticeText:    { fontSize: 13, fontFamily: font.regular, color: C.muted, textAlign: 'center', marginVertical: sp.sm, fontStyle: 'italic' },
+  liveRoomToggle:{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: r.lg, padding: sp.md, borderWidth: 1, borderColor: C.border, marginBottom: sp.sm },
+  liveRoomToggleOn:{ borderColor: C.primary, backgroundColor: 'rgba(123,20,22,0.04)' },
+  newBadge:      { backgroundColor: C.primary, borderRadius: r.sm, paddingHorizontal: 6, paddingVertical: 1 },
+  newBadgeText:  { color: C.white, fontSize: 9.5, fontFamily: font.bold, letterSpacing: 0.3 },
+  switchTrack:   { width: 40, height: 22, borderRadius: 11, backgroundColor: C.border, padding: 2, justifyContent: 'center' },
+  switchTrackOn: { backgroundColor: C.primary },
+  switchThumb:   { width: 18, height: 18, borderRadius: 9, backgroundColor: '#ffffff' },
+  switchThumbOn: { transform: [{ translateX: 18 }] },
+  roomModeRow:   { gap: sp.sm, marginBottom: sp.sm },
+  roomModeCard:  { backgroundColor: '#ffffff', borderRadius: r.lg, padding: sp.md, borderWidth: 1, borderColor: C.border },
+  roomModeCardActive: { borderColor: C.primary, backgroundColor: 'rgba(123,20,22,0.04)' },
+  roomModeTitle: { fontSize: 13.5, fontFamily: font.bold, color: C.text },
+  roomModeTitleActive: { color: C.primary },
+  roomModeDesc:  { fontSize: 12, fontFamily: font.regular, color: C.muted, marginTop: 4, lineHeight: 17 },
+  diffRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: sp.sm },
+  diffChip:      { paddingHorizontal: sp.sm, paddingVertical: 5, borderRadius: r.full, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border },
+  diffChipActive:{ backgroundColor: C.primary, borderColor: C.primary },
+  diffChipText:  { fontSize: 11.5, fontFamily: font.semiBold, color: C.muted },
+  diffChipTextActive: { color: C.white },
   startBtnWrap:  { marginTop: sp.md },
   startBtn:      { paddingVertical: 16, gap: sp.sm },
   startText:     { color: C.white, fontSize: 17, fontFamily: font.extraBold },

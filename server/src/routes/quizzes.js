@@ -10,6 +10,7 @@ const paraphraser = require('../services/paraphraser');
 const weakness = require('../services/weakness');
 const streakService = require('../services/streak');
 const scheduler = require('../services/scheduler');
+const rivalTiers = require('../services/rivalTiers');
 const { evaluateAndAward } = require('./achievements');
 const { nowSql, parseSql, toIso } = require('../utils/dates');
 
@@ -19,6 +20,24 @@ const MODES = ['adaptive', 'topic', 'timed', 'challenge'];
 const MAX_QUIZ_LENGTH = 100;
 const TIMED_SECONDS_PER_QUESTION = 30; // mobile timed sprint: 30s per question
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+
+// ── Live Room: Practice-mode difficulty labels the student can pick when
+// opting into user-set rival difficulty, instead of the locked, data-derived
+// Ranked rivals (rivalTiers.js). Deliberately labeled by difficulty, not by
+// rival identity, so it never reads as "the real standard to chase". Ports
+// QuizController::PRACTICE_TIERS / PRACTICE_ROSTER from the web app.
+const PRACTICE_TIERS = {
+  easy:       { tag: 'Easy',          spq: 22, acc: 0.70 },
+  average:    { tag: 'Average',       spq: 17, acc: 0.82 },
+  challenger: { tag: 'Challenger',    spq: 14, acc: 0.88 },
+  top:        { tag: 'Top-Performer', spq: 11, acc: 0.95 },
+};
+const PRACTICE_ROSTER = [
+  { name: 'Practice Rival A', color: '#10b981' },
+  { name: 'Practice Rival B', color: '#3b82f6' },
+  { name: 'Practice Rival C', color: '#f59e0b' },
+  { name: 'Practice Rival D', color: '#ef4444' },
+];
 
 // ── Question selection (port of selectQuestions on the web) ────────────────
 
@@ -200,15 +219,21 @@ router.post('/quizzes/start', apiAuth, async (req, res, next) => {
       return res.status(422).json({ message: 'No questions are available for that subject yet.' });
     }
 
+    // Live Room: opting into a user-picked Practice difficulty instead of the
+    // locked, data-derived Ranked rivals. Anything else stays on the locked
+    // Ranked room, so this can never be forced on by a missing/malformed field.
+    const isPracticeRoom = Boolean(body.is_practice_room) && Boolean(PRACTICE_TIERS[body.practice_difficulty]);
+    const practiceDifficulty = isPracticeRoom ? body.practice_difficulty : null;
+
     const now = nowSql();
     const conn = await pool.getConnection();
     let sessionId;
     try {
       await conn.beginTransaction();
       const [result] = await conn.query(
-        `INSERT INTO quiz_sessions (student_id, session_type, mode, subject_id, topic_id, started_at, total_items, correct_answers)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
-        [studentId, sessionType, mode, subjectId, focusTopicId, now, questionIds.length]
+        `INSERT INTO quiz_sessions (student_id, session_type, mode, subject_id, topic_id, started_at, total_items, correct_answers, is_practice_room, practice_difficulty)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        [studentId, sessionType, mode, subjectId, focusTopicId, now, questionIds.length, isPracticeRoom ? 1 : 0, practiceDifficulty]
       );
       sessionId = result.insertId;
       const values = questionIds.map((qid) => [sessionId, qid, now]);
@@ -266,12 +291,25 @@ router.get('/quizzes/:id(\\d+)', apiAuth, async (req, res, next) => {
     const presented = await loadPresentedQuestions(session.id);
     const isTraining = session.session_type === 'training';
 
+    // Live Room: the rival roster this session's race draws from. Practice
+    // Room sessions get 4 cosmetic variants of the student's picked
+    // difficulty; everything else draws the locked, data-derived Ranked pool.
+    let rivalPool;
+    if (session.is_practice_room) {
+      const tier = PRACTICE_TIERS[session.practice_difficulty] || PRACTICE_TIERS.average;
+      rivalPool = PRACTICE_ROSTER.map((r) => ({ ...r, tag: tier.tag, spq: tier.spq, acc: tier.acc }));
+    } else {
+      rivalPool = await rivalTiers.tiers();
+    }
+
     res.json({
       session_id: session.id,
       mode: session.mode,
       session_type: session.session_type,
       time_limit: timeLimitMinutes(session, presented.length),
       total_items: presented.length,
+      is_practice_room: Boolean(session.is_practice_room),
+      rival_pool: rivalPool,
       questions: presented.map((p, i) => ({
         item_number: i + 1,
         question_id: p.id,
@@ -350,7 +388,8 @@ router.post('/quizzes/:id(\\d+)/submit', apiAuth, async (req, res, next) => {
         [now, correctCount, scorePercent, durationSecs, session.id]
       );
 
-      const countsTowardProgress = session.session_type !== 'training';
+      // Live Room Practice sessions never feed analytics, same as Training.
+      const countsTowardProgress = session.session_type !== 'training' && !session.is_practice_room;
       if (countsTowardProgress) {
         // performance records (port of updatePerformanceRecords)
         for (const [topicId, tally] of Object.entries(topicTally)) {
@@ -398,7 +437,7 @@ router.post('/quizzes/:id(\\d+)/submit', apiAuth, async (req, res, next) => {
 
     await streakService.refresh(session.student_id);
 
-    if (session.session_type !== 'training') {
+    if (session.session_type !== 'training' && !session.is_practice_room) {
       try {
         await scheduler.recordAnswers(session.student_id, answerResults);
         await weakness.syncMany(session.student_id, Object.keys(topicTally));

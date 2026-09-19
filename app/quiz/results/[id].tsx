@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
 import { C, sp, r, sh, font, type, grad } from '@/constants/cpace-theme';
 import { GradientButton, GradientFill } from '@/components/ui/gradient';
+import { takeRoomSummary, type RoomSummary } from '@/lib/liveRoom';
 
 interface Results {
   session_id: number;
@@ -37,6 +38,7 @@ export default function QuizResultsScreen() {
   const [results, setResults]   = useState<Results | null>(null);
   const [loading, setLoading]   = useState(true);
   const [showDetails, setShowDetails] = useState(false);
+  const [room, setRoom]         = useState<RoomSummary | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -48,6 +50,9 @@ export default function QuizResultsScreen() {
       } finally {
         setLoading(false);
       }
+      // Live Room ran entirely on-device during the quiz, so the finishing
+      // standing is handed over through storage rather than the API.
+      setRoom(await takeRoomSummary(Number(id)));
     })();
   }, [id]);
 
@@ -96,6 +101,27 @@ export default function QuizResultsScreen() {
             </View>
           )}
         </GradientFill>
+
+        {/* Live Room finish */}
+        {room && (
+          <View style={[s.card, sh.sm, s.roomCard]}>
+            <View style={s.roomCardHead}>
+              <View style={[s.roomMedal, room.place === 1 && s.roomMedalWin]}>
+                <Ionicons name="medal" size={18} color={room.place === 1 ? '#7c2d12' : C.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.roomPlace}>#{room.place} of {room.total}</Text>
+                <Text style={s.roomSub}>
+                  {room.place === 1 ? 'You finished ahead of every candidate in the room.' : 'in your live room'}
+                </Text>
+              </View>
+              <View style={s.roomStreakBadge}>
+                <Ionicons name="flame" size={14} color={C.warning} />
+                <Text style={s.roomStreakText}>{room.streak} best streak</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Stats Row */}
         <View style={s.statsRow}>
@@ -204,6 +230,14 @@ const s = StyleSheet.create({
   statVal:     { fontSize: 20, fontFamily: font.extraBold },
   statLabel:   { fontSize: 11, fontFamily: font.medium, color: C.muted, marginTop: 2 },
   card:        { backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.md, marginHorizontal: sp.md, marginBottom: sp.sm, },
+  roomCard:    { paddingVertical: sp.md },
+  roomCardHead:{ flexDirection: 'row', alignItems: 'center', gap: sp.sm },
+  roomMedal:   { width: 38, height: 38, borderRadius: 19, backgroundColor: C.muted, justifyContent: 'center', alignItems: 'center' },
+  roomMedalWin:{ backgroundColor: '#fbbf24' },
+  roomPlace:   { fontSize: 16, fontFamily: font.bold, color: C.text },
+  roomSub:     { fontSize: 11.5, fontFamily: font.regular, color: C.muted, marginTop: 1 },
+  roomStreakBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(232,145,11,0.12)', paddingHorizontal: sp.sm, paddingVertical: 6, borderRadius: r.full },
+  roomStreakText: { fontSize: 11.5, fontFamily: font.bold, color: C.warning },
   sectionTitle:{ ...type.sectionTitle },
   topicRow:    { flexDirection: 'row', alignItems: 'center', marginTop: sp.xs },
   topicName:   { width: 100, fontSize: 12, fontFamily: font.regular, color: C.muted },

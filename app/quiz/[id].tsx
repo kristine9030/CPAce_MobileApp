@@ -9,6 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
 import { C, sp, r, font, grad } from '@/constants/cpace-theme';
 import { GradientButton, GradientFill } from '@/components/ui/gradient';
+import { useLiveRoom, type RivalTier } from '@/lib/liveRoom';
+import { LiveRoomPill, LiveRoomSheet, LiveRoomStrip, LiveRoomToasts } from '@/components/quiz/live-room-panel';
 
 interface Option { id: number; letter: string; text: string; is_correct?: boolean }
 interface Question {
@@ -26,10 +28,12 @@ interface Session {
   time_limit: number | null;
   questions: Question[];
   total_items: number;
+  is_practice_room?: boolean;
+  rival_pool?: RivalTier[];
 }
 
 export default function TakeQuizScreen() {
-  const { id }              = useLocalSearchParams<{ id: string }>();
+  const { id, liveRoom }     = useLocalSearchParams<{ id: string; liveRoom?: string }>();
   const router              = useRouter();
   const [session, setSession]   = useState<Session | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -38,7 +42,18 @@ export default function TakeQuizScreen() {
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft]     = useState<number | null>(null);
+  const [roomSheetOpen, setRoomSheetOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const room = useLiveRoom({
+    enabled: liveRoom !== '0',
+    pool: session?.rival_pool ?? [],
+    sessionId: Number(id),
+    mode: session?.mode ?? 'adaptive',
+    sessionType: session?.session_type ?? 'testing',
+    totalQuestions: session?.total_items ?? 0,
+    paused: !session || submitting,
+  });
 
   useEffect(() => {
     loadSession();
@@ -73,9 +88,23 @@ export default function TakeQuizScreen() {
 
   const handleSelect = (questionId: number, optionId: number) => {
     if (session?.session_type === 'training' && revealed[questionId]) return;
+
+    // Live Room only reacts to a question's first answer, mirroring the web
+    // (re-picking an option before submitting must not feed it a second time).
+    const firstAnswer = !(questionId in answers);
+
     setAnswers(prev => ({ ...prev, [questionId]: optionId }));
     if (session?.session_type === 'training') {
       setRevealed(prev => ({ ...prev, [questionId]: true }));
+    }
+
+    if (firstAnswer) {
+      // Testing mode never reveals correctness client-side, so the room
+      // simply doesn't score correctness there (it only ranks by pace).
+      const isCorrect = session?.session_type === 'training'
+        ? Boolean(session.questions.find(q => q.question_id === questionId)?.options.find(o => o.id === optionId)?.is_correct)
+        : false;
+      room.onAnswer(isCorrect);
     }
   };
 
@@ -102,6 +131,7 @@ export default function TakeQuizScreen() {
         question_id:      q.question_id,
         selected_option_id: answers[q.question_id] ?? null,
       }));
+      await room.finish();
       await client.post(`/quizzes/${id}/submit`, { answers: payload });
       router.replace({ pathname: '/quiz/results/[id]', params: { id } });
     } catch (err: any) {
@@ -138,6 +168,8 @@ export default function TakeQuizScreen() {
 
   return (
     <SafeAreaView style={s.safe}>
+      <LiveRoomToasts toasts={room.toasts} />
+
       {/* Header */}
       <View style={s.header}>
         <TouchableOpacity onPress={handleCancel}>
@@ -149,13 +181,32 @@ export default function TakeQuizScreen() {
             <Text style={[s.timer, timeLeft < 60 && { color: '#ff6b6b' }]}>{fmtTime(timeLeft)}</Text>
           )}
         </View>
-        <Text style={s.answeredCount}>{answered}/{total}</Text>
+        {room.active ? (
+          <LiveRoomPill standing={room.standing} streak={room.streak} onPress={() => setRoomSheetOpen(true)} />
+        ) : (
+          <Text style={s.answeredCount}>{answered}/{total}</Text>
+        )}
       </View>
+
+      {room.active && (
+        <LiveRoomSheet
+          visible={roomSheetOpen}
+          onClose={() => setRoomSheetOpen(false)}
+          rows={room.rows}
+          standing={room.standing}
+          streak={room.streak}
+          bestStreak={room.bestStreak}
+          feed={room.feed}
+        />
+      )}
 
       {/* Progress Bar */}
       <View style={s.progressBg}>
         <GradientFill diagonal={false} style={[s.progressFill, { width: `${((current + 1) / total) * 100}%` }]} />
       </View>
+
+      {/* Live Room: rivals stay visible on-screen the whole time you're answering */}
+      {room.active && <LiveRoomStrip rows={room.rows} onPress={() => setRoomSheetOpen(true)} />}
 
       <ScrollView contentContainerStyle={{ padding: sp.lg }}>
         <Text style={s.questionText}>{q.question_text}</Text>

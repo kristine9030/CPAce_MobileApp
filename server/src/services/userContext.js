@@ -16,7 +16,7 @@ async function getContext(studentId) {
     ? Math.max(0, Math.ceil((startOfDay(parseSql(examDate)).getTime() - startOfDay(new Date()).getTime()) / 86400000))
     : null;
 
-  const baseWhere = "student_id = ? AND session_type != 'training' AND completed_at IS NOT NULL";
+  const baseWhere = "student_id = ? AND session_type != 'training' AND is_practice_room = 0 AND completed_at IS NOT NULL";
   const totals = await one(
     `SELECT COUNT(*) sessions, COALESCE(SUM(total_items),0) attempted,
             COALESCE(SUM(correct_answers),0) correct, COALESCE(AVG(score_percent),0) avg_score
@@ -70,7 +70,7 @@ async function getContext(studentId) {
     `SELECT qs.mode, qs.total_items, qs.correct_answers, qs.score_percent, qs.completed_at, s.code AS subject_code
        FROM quiz_sessions qs
        LEFT JOIN subjects s ON s.id = qs.subject_id
-      WHERE qs.student_id = ? AND qs.session_type != 'training' AND qs.completed_at IS NOT NULL
+      WHERE qs.student_id = ? AND qs.session_type != 'training' AND qs.is_practice_room = 0 AND qs.completed_at IS NOT NULL
       ORDER BY qs.completed_at DESC
       LIMIT 5`,
     [studentId]

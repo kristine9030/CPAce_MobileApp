@@ -32,7 +32,7 @@ const SYSTEM_PROMPT = [
 
 /** Compact picture of one student's performance, small enough to prompt with. */
 async function buildSummary(studentId) {
-  const baseWhere = "student_id = ? AND session_type != 'training' AND completed_at IS NOT NULL";
+  const baseWhere = "student_id = ? AND session_type != 'training' AND is_practice_room = 0 AND completed_at IS NOT NULL";
 
   const totals = await one(
     `SELECT COUNT(*) sessions,

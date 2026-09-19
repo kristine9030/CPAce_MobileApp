@@ -12,7 +12,7 @@ const router = express.Router();
 router.get('/performance', apiAuth, async (req, res, next) => {
   try {
     const studentId = req.user.id;
-    const baseWhere = "student_id = ? AND session_type != 'training' AND completed_at IS NOT NULL";
+    const baseWhere = "student_id = ? AND session_type != 'training' AND is_practice_room = 0 AND completed_at IS NOT NULL";
 
     const all = await one(
       `SELECT COUNT(*) sessions,
@@ -84,7 +84,7 @@ router.get('/performance', apiAuth, async (req, res, next) => {
               COALESCE(SUM(pr.total_attempts),0) attempts,
               (SELECT COUNT(*) FROM quiz_sessions qs
                 WHERE qs.student_id = ? AND qs.subject_id = s.id
-                  AND qs.session_type != 'training' AND qs.completed_at IS NOT NULL) sessions
+                  AND qs.session_type != 'training' AND qs.is_practice_room = 0 AND qs.completed_at IS NOT NULL) sessions
          FROM subjects s
          LEFT JOIN topics t ON t.subject_id = s.id
          LEFT JOIN performance_records pr ON pr.topic_id = t.id AND pr.student_id = ?

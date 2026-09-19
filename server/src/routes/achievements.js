@@ -179,7 +179,7 @@ const ACHIEVEMENTS = [
     color: '#14B8A6',
     category: 'milestone',
     async check(studentId) {
-      const row = await one("SELECT COALESCE(SUM(total_items),0) c FROM quiz_sessions WHERE student_id = ? AND session_type != 'training'", [studentId]);
+      const row = await one("SELECT COALESCE(SUM(total_items),0) c FROM quiz_sessions WHERE student_id = ? AND session_type != 'training' AND is_practice_room = 0", [studentId]);
       const total = Number(row.c);
       return { unlocked: total >= 100, progress: Math.min(100, Math.round((total / 100) * 100)), max: 100, current: total };
     },

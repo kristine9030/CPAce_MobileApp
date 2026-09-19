@@ -21,12 +21,14 @@ router.get('/dashboard', apiAuth, async (req, res, next) => {
       : null;
 
     const weekAgo = toSqlDateTime(addDays(new Date(), -7));
-    const baseWhere = "student_id = ? AND session_type != 'training' AND completed_at IS NOT NULL";
+    // Live Room Practice sessions (is_practice_room) are excluded here just
+    // like Training — they're for pace practice only, never analytics.
+    const baseWhere = "student_id = ? AND session_type != 'training' AND is_practice_room = 0 AND completed_at IS NOT NULL";
 
     const [attempted] = await q(`SELECT COALESCE(SUM(total_items),0) v FROM quiz_sessions WHERE ${baseWhere}`, [studentId]);
     const [attemptedWeek] = await q(`SELECT COALESCE(SUM(total_items),0) v FROM quiz_sessions WHERE ${baseWhere} AND started_at >= ?`, [studentId, weekAgo]);
-    const [secs] = await q("SELECT COALESCE(SUM(duration_secs),0) v FROM quiz_sessions WHERE student_id = ? AND session_type != 'training'", [studentId]);
-    const [secsWeek] = await q("SELECT COALESCE(SUM(duration_secs),0) v FROM quiz_sessions WHERE student_id = ? AND session_type != 'training' AND started_at >= ?", [studentId, weekAgo]);
+    const [secs] = await q("SELECT COALESCE(SUM(duration_secs),0) v FROM quiz_sessions WHERE student_id = ? AND session_type != 'training' AND is_practice_room = 0", [studentId]);
+    const [secsWeek] = await q("SELECT COALESCE(SUM(duration_secs),0) v FROM quiz_sessions WHERE student_id = ? AND session_type != 'training' AND is_practice_room = 0 AND started_at >= ?", [studentId, weekAgo]);
 
     // Board readiness = overall accuracy (matches the web Dashboard's own
     // comment/formula — a different, simpler number than the per-subject
@@ -68,7 +70,7 @@ router.get('/dashboard', apiAuth, async (req, res, next) => {
               qs.started_at, qs.completed_at, s.code AS subject_code
          FROM quiz_sessions qs
          LEFT JOIN subjects s ON s.id = qs.subject_id
-        WHERE qs.student_id = ? AND qs.session_type != 'training'
+        WHERE qs.student_id = ? AND qs.session_type != 'training' AND qs.is_practice_room = 0
         ORDER BY qs.started_at DESC
         LIMIT 5`,
       [studentId]
