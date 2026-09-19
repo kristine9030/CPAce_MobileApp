@@ -36,4 +36,17 @@ router.post('/notifications/read-all', apiAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Mark one notification read — scoped to the recipient so a guessed id can't
+// touch somebody else's row.
+router.post('/notifications/:id(\\d+)/read', apiAuth, async (req, res, next) => {
+  try {
+    const result = await q(
+      'UPDATE notifications SET is_read = 1 WHERE id = ? AND recipient_id = ?',
+      [Number(req.params.id), req.user.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: 'Notification not found.' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = { router };

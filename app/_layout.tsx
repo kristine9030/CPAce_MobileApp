@@ -67,6 +67,10 @@ function RootLayoutNav() {
         <Stack.Screen name="subject-detail" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="topic-materials" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="messages"      options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="class-quiz"    options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="community"     options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="note-quiz"     options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="search"        options={{ animation: 'slide_from_bottom' }} />
       </Stack>
       {user && <AiTutorWidget />}
     </>

@@ -15,10 +15,13 @@ const SW     = Dimensions.get('window').width;
 const FAB_D  = 58;
 const CARD_H = 72;
 
-/* ── Popup items ── */
+/* ── Popup items — two rows of four ── */
 const POPUP = [
-  { icon: 'document-text' as any, label: 'Notes',        href: '/(tabs)/notes' },
+  { icon: 'document-text' as any, label: 'Notes',         href: '/(tabs)/notes' },
   { icon: 'book'          as any, label: 'Subjects',      href: '/(tabs)/subjects' },
+  { icon: 'clipboard'     as any, label: 'Class Quiz',    href: '/class-quiz' },
+  { icon: 'people'        as any, label: 'Community',     href: '/community' },
+  { icon: 'search'        as any, label: 'Search',        href: '/search' },
   { icon: 'trophy'        as any, label: 'Achievements',  href: '/achievements' },
   { icon: 'settings-sharp'as any, label: 'Settings',      href: '/settings' },
 ];
@@ -190,13 +193,15 @@ const s = StyleSheet.create({
     paddingBottom: CARD_H + 28,
   },
 
-  /* ── Popup card — horizontal row of 4 items ── */
+  /* ── Popup card — grid of 4 per row, wrapping to a second row ── */
   popupCard: {
-    width: SW - 80,
+    width: SW - 60,
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 16,
     backgroundColor: '#fff',
-    borderRadius: 40,              // very curved / pill-like
-    paddingVertical: 14,
+    borderRadius: 32,
+    paddingVertical: 18,
     paddingHorizontal: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
@@ -205,7 +210,7 @@ const s = StyleSheet.create({
     elevation: 20,
   },
   popupItem: {
-    flex: 1,
+    width: '25%',
     alignItems: 'center',
     gap: 5,
   },

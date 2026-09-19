@@ -636,6 +636,24 @@ export default function DashboardScreen() {
               <Text style={styles.searchCancel}>Cancel</Text>
             </TouchableOpacity>
           </View>
+
+          {/* This modal searches what's already loaded; the full screen also
+              covers class quizzes, community posts and the resource library. */}
+          <TouchableOpacity
+            style={styles.searchAllRow}
+            activeOpacity={0.8}
+            onPress={() => {
+              setSearchOpen(false);
+              router.push({ pathname: '/search', params: query.trim() ? { q: query.trim() } : {} });
+            }}
+          >
+            <Ionicons name="globe-outline" size={16} color={C.accent} />
+            <Text style={styles.searchAllText}>
+              {query.trim() ? `Search everything for “${query.trim()}”` : 'Search everything'}
+            </Text>
+            <Ionicons name="chevron-forward" size={15} color={C.light} />
+          </TouchableOpacity>
+
           <SearchResults
             query={query}
             subjects={allSubjects}
@@ -1264,6 +1282,14 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, fontFamily: F.regular, color: C.text, paddingVertical: 0 },
   searchCancel: { fontSize: 14, fontFamily: F.semiBold, color: C.primary },
+  searchAllRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 16, marginBottom: 8,
+    paddingHorizontal: 12, paddingVertical: 11,
+    borderRadius: 10, backgroundColor: 'rgba(165,32,32,0.05)',
+    borderWidth: 1, borderColor: 'rgba(165,32,32,0.18)',
+  },
+  searchAllText: { flex: 1, fontSize: 13, fontFamily: F.semiBold, color: C.accent },
 
   /* Notifications */
   notifModalSafe: {

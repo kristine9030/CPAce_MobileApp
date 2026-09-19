@@ -20,10 +20,19 @@ interface Note {
   subject_id: number | null;
   subject_code: string | null;
   is_favorite: boolean;
+  is_archived: boolean;
+  is_trashed: boolean;
   created_on: string;   // formatted string from API e.g. "Jun 28, 2026"
 }
 
 type FormNote = { title: string; content: string };
+type View_ = 'active' | 'archived' | 'trash';
+
+const VIEWS = [
+  { key: 'active'   as const, label: 'Notes',    icon: 'documents-outline' as const },
+  { key: 'archived' as const, label: 'Archived', icon: 'archive-outline' as const },
+  { key: 'trash'    as const, label: 'Trash',    icon: 'trash-outline' as const },
+];
 
 export default function NotesScreen() {
   const router      = useRouter();
@@ -40,8 +49,10 @@ export default function NotesScreen() {
   const [favOnly, setFavOnly]     = useState(false);
   const [viewing, setViewing]     = useState<Note | null>(null);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const [view, setView]           = useState<View_>('active');
+  const [counts, setCounts]       = useState({ active: 0, archived: 0, trash: 0 });
 
-  const selectedText = viewing ? viewing.content.slice(selection.start, selection.end).trim() : '';
+  const selectedText = viewing ? (viewing.content ?? '').slice(selection.start, selection.end).trim() : '';
 
   const askAboutSelection = () => {
     if (!selectedText) return;
@@ -58,21 +69,27 @@ export default function NotesScreen() {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefresh(true);
     try {
-      const res = await client.get('/review-notes');
+      const res = await client.get('/review-notes', { params: { view } });
       const list = res.data.data ?? [];
       setNotes(list);
+      if (res.data.counts) setCounts(res.data.counts);
       applyFilter(list, search, favOnly);
     } catch {}
     setLoading(false);
     setRefresh(false);
-  }, [search, favOnly]);
+  }, [search, favOnly, view]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const applyFilter = (list: Note[], q: string, fav: boolean) => {
     let r = list;
     if (fav) r = r.filter(n => n.is_favorite);
-    if (q) r = r.filter(n => n.title.toLowerCase().includes(q.toLowerCase()) || n.content.toLowerCase().includes(q.toLowerCase()));
+    if (q) {
+      const needle = q.toLowerCase();
+      r = r.filter(n =>
+        (n.title ?? '').toLowerCase().includes(needle) ||
+        (n.content ?? '').toLowerCase().includes(needle));
+    }
     setFiltered(r);
   };
 
@@ -117,16 +134,60 @@ export default function NotesScreen() {
     }
   };
 
+  // In the main/archived views this moves the note to Trash; from Trash it is
+  // a permanent delete, so the wording changes with it.
   const del = (id: number) => {
-    Alert.alert('Delete Note', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try {
-          await client.delete(`/review-notes/${id}`);
-          load();
-        } catch {}
-      }},
-    ]);
+    const permanent = view === 'trash';
+    Alert.alert(
+      permanent ? 'Delete Forever' : 'Move to Trash',
+      permanent
+        ? 'This note will be gone for good. This cannot be undone.'
+        : 'You can restore it from Trash later.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: permanent ? 'Delete Forever' : 'Move to Trash',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await client.delete(`/review-notes/${id}${permanent ? '?force=1' : ''}`);
+              load();
+            } catch {}
+          },
+        },
+      ],
+    );
+  };
+
+  const toggleArchive = async (note: Note) => {
+    try {
+      await client.post(`/review-notes/${note.id}/archive`);
+      load();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not update this note.');
+    }
+  };
+
+  const restore = async (note: Note) => {
+    try {
+      await client.post(`/review-notes/${note.id}/restore`);
+      load();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not restore this note.');
+    }
+  };
+
+  const openQuiz = (note: Note) => {
+    router.push({
+      pathname: '/note-quiz',
+      params: { noteId: String(note.id), noteTitle: note.title },
+    });
+  };
+
+  const switchView = (next: View_) => {
+    if (next === view) return;
+    setView(next);
+    setLoading(true);
   };
 
   const toggleNoteFav = async (note: Note) => {
@@ -146,7 +207,7 @@ export default function NotesScreen() {
     <SafeAreaView style={s.safe} edges={['top']}>
       <ScreenHeader
         title="Review Notes"
-        subtitle={`${notes.length} note${notes.length === 1 ? '' : 's'}`}
+        subtitle={`${counts.active} note${counts.active === 1 ? '' : 's'}`}
         onBack={() => router.push('/(tabs)')}
         right={
           <GradientButton radius={20} contentStyle={s.addBtn} onPress={openCreate}>
@@ -154,6 +215,30 @@ export default function NotesScreen() {
           </GradientButton>
         }
       />
+
+      {/* Active / Archived / Trash */}
+      <View style={s.viewTabs}>
+        {VIEWS.map((v) => {
+          const active = v.key === view;
+          const count = counts[v.key];
+          return (
+            <TouchableOpacity
+              key={v.key}
+              style={[s.viewTab, active && s.viewTabActive]}
+              onPress={() => switchView(v.key)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name={v.icon} size={15} color={active ? C.primary : C.muted} />
+              <Text style={[s.viewTabText, active && s.viewTabTextActive]}>{v.label}</Text>
+              {count > 0 ? (
+                <View style={[s.viewTabBadge, active && s.viewTabBadgeActive]}>
+                  <Text style={[s.viewTabBadgeText, active && { color: C.white }]}>{count}</Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       {/* Search + Filter */}
       <View style={s.searchRow}>
@@ -200,22 +285,62 @@ export default function NotesScreen() {
               <Text style={s.content} numberOfLines={3}>{item.content}</Text>
               <Text style={s.date}>{item.created_on ?? ''}</Text>
               <View style={s.actions}>
-                <TouchableOpacity style={s.actionBtn} onPress={() => openEdit(item)}>
-                  <Ionicons name="pencil" size={16} color={C.accent} />
-                  <Text style={[s.actionText, { color: C.accent }]}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.actionBtn} onPress={() => del(item.id)}>
-                  <Ionicons name="trash" size={16} color={C.danger} />
-                  <Text style={[s.actionText, { color: C.danger }]}>Delete</Text>
-                </TouchableOpacity>
+                {view === 'trash' ? (
+                  <>
+                    <TouchableOpacity style={s.actionBtn} onPress={() => restore(item)}>
+                      <Ionicons name="arrow-undo" size={16} color={C.success} />
+                      <Text style={[s.actionText, { color: C.success }]}>Restore</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.actionBtn} onPress={() => del(item.id)}>
+                      <Ionicons name="trash" size={16} color={C.danger} />
+                      <Text style={[s.actionText, { color: C.danger }]}>Delete Forever</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity style={s.actionBtn} onPress={() => openQuiz(item)}>
+                      <Ionicons name="sparkles" size={16} color={C.purple} />
+                      <Text style={[s.actionText, { color: C.purple }]}>Quiz Me</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.actionBtn} onPress={() => openEdit(item)}>
+                      <Ionicons name="pencil" size={16} color={C.accent} />
+                      <Text style={[s.actionText, { color: C.accent }]}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.actionBtn} onPress={() => toggleArchive(item)}>
+                      <Ionicons
+                        name={item.is_archived ? 'arrow-undo' : 'archive'}
+                        size={16}
+                        color={C.muted}
+                      />
+                      <Text style={[s.actionText, { color: C.muted }]}>
+                        {item.is_archived ? 'Unarchive' : 'Archive'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.actionBtn} onPress={() => del(item.id)}>
+                      <Ionicons name="trash" size={16} color={C.danger} />
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </View>
           </TouchableOpacity>
         )}
         ListEmptyComponent={
           <View style={s.emptyBox}>
-            <Ionicons name="document-text-outline" size={48} color={C.light} />
-            <Text style={s.emptyText}>{favOnly ? 'No starred notes.' : 'No notes yet. Tap + to create one.'}</Text>
+            <Ionicons
+              name={view === 'trash' ? 'trash-outline' : view === 'archived' ? 'archive-outline' : 'document-text-outline'}
+              size={48}
+              color={C.light}
+            />
+            <Text style={s.emptyText}>
+              {favOnly
+                ? 'No starred notes.'
+                : view === 'trash'
+                  ? 'Trash is empty.'
+                  : view === 'archived'
+                    ? 'Nothing archived yet.'
+                    : 'No notes yet. Tap + to create one.'}
+            </Text>
           </View>
         }
       />
@@ -311,6 +436,14 @@ const s = StyleSheet.create({
   safe:         { flex: 1, backgroundColor: C.bg },
   center:       { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
   addBtn:       { width: 40, height: 40, paddingVertical: 0, paddingHorizontal: 0 },
+  viewTabs:     { flexDirection: 'row', gap: sp.xs, paddingHorizontal: sp.md, paddingTop: sp.xs },
+  viewTab:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: r.md, backgroundColor: 'rgba(255,255,255,0.78)', borderWidth: 1, borderColor: C.border },
+  viewTabActive:{ borderColor: C.primary, backgroundColor: 'rgba(123,20,22,0.07)' },
+  viewTabText:  { fontSize: 12.5, fontFamily: font.semiBold, color: C.muted },
+  viewTabTextActive: { color: C.primary },
+  viewTabBadge: { minWidth: 18, paddingHorizontal: 5, paddingVertical: 1, borderRadius: r.full, backgroundColor: C.border, alignItems: 'center' },
+  viewTabBadgeActive: { backgroundColor: C.primary },
+  viewTabBadgeText: { fontSize: 10, fontFamily: font.bold, color: C.muted },
   searchRow:    { flexDirection: 'row', padding: sp.md, gap: sp.sm },
   searchBox:    { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.md, paddingHorizontal: sp.sm, borderWidth: 1, borderColor: C.border },
   searchInput:  { flex: 1, paddingVertical: 10, fontSize: 14, fontFamily: font.regular, color: C.text },
@@ -324,7 +457,7 @@ const s = StyleSheet.create({
   badgeText:    { fontSize: 11, fontFamily: font.bold, color: C.white },
   content:      { fontSize: 14, fontFamily: font.regular, color: C.muted, marginTop: sp.xs, lineHeight: 20 },
   date:         { fontSize: 11, fontFamily: font.regular, color: C.light, marginTop: sp.xs },
-  actions:      { flexDirection: 'row', gap: sp.md, marginTop: sp.sm, borderTopWidth: 1, borderTopColor: C.border, paddingTop: sp.xs },
+  actions:      { flexDirection: 'row', flexWrap: 'wrap', gap: sp.md, marginTop: sp.sm, borderTopWidth: 1, borderTopColor: C.border, paddingTop: sp.sm },
   actionBtn:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionText:   { fontSize: 13, fontFamily: font.semiBold },
   emptyBox:     { alignItems: 'center', paddingTop: 60, gap: sp.md },

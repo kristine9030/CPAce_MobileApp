@@ -2,6 +2,7 @@
 const express = require('express');
 const { apiAuth } = require('../middleware/auth');
 const aiTutor = require('../services/aiTutor');
+const aiInsights = require('../services/aiInsights');
 const userContext = require('../services/userContext');
 
 const router = express.Router();
@@ -55,6 +56,24 @@ router.post('/ai-tutor/chat', apiAuth, async (req, res) => {
   } catch (err) {
     console.error('[ai-tutor] chat failed:', err.message);
     res.status(503).json({ ok: false, message: 'AI Tutor is temporarily unavailable. Please try again shortly.' });
+  }
+});
+
+// AI insight cards for the Performance screen, built from the student's own
+// quiz stats. Cached per student, so this is cheap unless their results moved.
+router.get('/ai-tutor/performance-insights', apiAuth, async (req, res) => {
+  const refresh = String(req.query.refresh) === '1' || String(req.query.refresh) === 'true';
+
+  if (refresh && rateLimited(req.user.id)) {
+    return res.status(429).json({ ok: false, message: 'Too many requests. Please wait a moment.' });
+  }
+
+  try {
+    const { insights, cached } = await aiInsights.forStudent(req.user.id, { refresh });
+    res.json({ ok: true, insights, cached });
+  } catch (err) {
+    console.error('[ai-insights] failed:', err.message);
+    res.status(503).json({ ok: false, message: 'Insights are unavailable right now. Please try again shortly.' });
   }
 });
 

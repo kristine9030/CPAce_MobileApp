@@ -25,6 +25,19 @@ interface PerfData {
   by_quiz_type: { mode: string; sessions: number; avg_score: number }[];
 }
 
+interface Insight {
+  title: string;
+  body: string;
+  tone: 'positive' | 'warning' | 'neutral';
+}
+
+/** Tone → the same two-state status palette the rest of the screen uses. */
+const TONE = {
+  positive: { color: '#21a366', icon: 'checkmark-circle' as const },
+  warning:  { color: '#c0392b', icon: 'alert-circle' as const },
+  neutral:  { color: C.muted,   icon: 'information-circle' as const },
+};
+
 /* ── Chart tokens ───────────────────────────────────────────────────────────
    Magnitude is a single hue (bars and meters all plot the same measure, so the
    row label carries identity — colouring per category would just re-encode bar
@@ -53,6 +66,10 @@ export default function PerformanceScreen() {
   const [refresh, setRefresh] = useState(false);
   const [asTable, setTable]   = useState(false);
 
+  const [insights, setInsights]       = useState<Insight[] | null>(null);
+  const [insightsBusy, setInsightsBusy] = useState(false);
+  const [insightsErr, setInsightsErr]   = useState<string | null>(null);
+
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefresh(true);
     try {
@@ -61,6 +78,23 @@ export default function PerformanceScreen() {
     } catch {}
     setLoading(false);
     setRefresh(false);
+  }, []);
+
+  // Insights are a model call, so they load on demand rather than on every
+  // visit to the screen.
+  const loadInsights = useCallback(async (force = false) => {
+    setInsightsBusy(true);
+    setInsightsErr(null);
+    try {
+      const res = await client.get('/ai-tutor/performance-insights', {
+        params: force ? { refresh: 1 } : undefined,
+      });
+      setInsights(res.data.insights ?? []);
+    } catch (err: any) {
+      setInsightsErr(err.message || 'Insights are unavailable right now.');
+    } finally {
+      setInsightsBusy(false);
+    }
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -214,6 +248,54 @@ export default function PerformanceScreen() {
           </Card>
         )}
 
+        {/* ── AI coach ── */}
+        {hasAny && (
+          <Card
+            title="AI insights"
+            subtitle="Built from your own results"
+            action={
+              insights && !insightsBusy ? (
+                <TouchableOpacity onPress={() => loadInsights(true)} hitSlop={8}>
+                  <Ionicons name="refresh" size={16} color={C.accent} />
+                </TouchableOpacity>
+              ) : null
+            }
+          >
+            {insightsBusy ? (
+              <View style={s.aiBusy}>
+                <ActivityIndicator size="small" color={C.accent} />
+                <Text style={s.aiBusyText}>Reading your results…</Text>
+              </View>
+            ) : insightsErr ? (
+              <View style={s.aiBusy}>
+                <Text style={s.aiErrText}>{insightsErr}</Text>
+                <TouchableOpacity style={s.aiRetry} onPress={() => loadInsights()}>
+                  <Ionicons name="refresh" size={15} color={C.accent} />
+                  <Text style={s.aiRetryText}>Try again</Text>
+                </TouchableOpacity>
+              </View>
+            ) : insights ? (
+              insights.map((item, i) => {
+                const tone = TONE[item.tone] ?? TONE.neutral;
+                return (
+                  <View key={i} style={[s.aiCard, { borderLeftColor: tone.color }]}>
+                    <View style={s.aiHead}>
+                      <Ionicons name={tone.icon} size={15} color={tone.color} />
+                      <Text style={s.aiTitle}>{item.title}</Text>
+                    </View>
+                    <Text style={s.aiBody}>{item.body}</Text>
+                  </View>
+                );
+              })
+            ) : (
+              <TouchableOpacity style={s.aiCta} onPress={() => loadInsights()} activeOpacity={0.8}>
+                <Ionicons name="sparkles" size={18} color={C.accent} />
+                <Text style={s.aiCtaText}>See what your numbers say</Text>
+              </TouchableOpacity>
+            )}
+          </Card>
+        )}
+
         {/* ── Topic status ── */}
         {d?.strengths?.length > 0 && (
           <Card title="Strong topics" subtitle="75% accuracy and above">
@@ -346,6 +428,19 @@ function longDate(str: string) {
 const s = StyleSheet.create({
   safe:   { flex: 1, backgroundColor: C.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
+
+  /* AI insights */
+  aiBusy:     { alignItems: 'center', gap: sp.sm, paddingVertical: sp.md },
+  aiBusyText: { fontSize: 12.5, fontFamily: font.regular, color: C.muted, fontStyle: 'italic' },
+  aiErrText:  { fontSize: 13, fontFamily: font.regular, color: C.muted, textAlign: 'center', lineHeight: 19 },
+  aiRetry:    { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  aiRetryText:{ fontSize: 13, fontFamily: font.semiBold, color: C.accent },
+  aiCta:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: sp.sm, paddingVertical: sp.md, borderRadius: r.md, borderWidth: 1, borderColor: C.border, borderStyle: 'dashed' },
+  aiCtaText:  { fontSize: 13.5, fontFamily: font.semiBold, color: C.accent },
+  aiCard:     { borderLeftWidth: 3, paddingLeft: sp.sm, paddingVertical: 6, marginBottom: sp.sm },
+  aiHead:     { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  aiTitle:    { flex: 1, fontSize: 13.5, fontFamily: font.bold, color: C.text },
+  aiBody:     { fontSize: 13, fontFamily: font.regular, color: C.muted, lineHeight: 19, marginTop: 2 },
 
   /* Hero */
   hero: {

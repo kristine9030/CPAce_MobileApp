@@ -35,7 +35,7 @@ function toGeminiContents(messages) {
   }));
 }
 
-async function callGemini(messages, userContextText) {
+async function callGemini(messages, userContextText, systemText) {
   if (!GEMINI_KEY) throw new Error('Gemini not configured.');
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -43,7 +43,7 @@ async function callGemini(messages, userContextText) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
     body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt(userContextText) }] },
+      system_instruction: { parts: [{ text: systemText ?? systemPrompt(userContextText) }] },
       contents: toGeminiContents(messages),
       generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
     }),
@@ -57,10 +57,10 @@ async function callGemini(messages, userContextText) {
   return reply;
 }
 
-async function callOpenRouter(messages, userContextText) {
+async function callOpenRouter(messages, userContextText, systemText) {
   if (!OPENROUTER_KEY || OPENROUTER_MODELS.length === 0) throw new Error('OpenRouter not configured.');
 
-  const chatMessages = [{ role: 'system', content: systemPrompt(userContextText) }, ...messages];
+  const chatMessages = [{ role: 'system', content: systemText ?? systemPrompt(userContextText) }, ...messages];
   let lastErr;
 
   for (const model of OPENROUTER_MODELS) {
@@ -105,4 +105,43 @@ async function chat(messages, userContextText) {
   return { reply, provider: 'openrouter' };
 }
 
-module.exports = { chat };
+/**
+ * One completion with a caller-supplied system prompt, using the same
+ * Gemini → OpenRouter chain (and the same cooldown) as chat(). Used by the
+ * features that need the model to follow their own grounding rules rather
+ * than the tutor persona — note quizzes and performance insights.
+ */
+async function complete(systemText, userText) {
+  const messages = [{ role: 'user', content: userText }];
+
+  if (Date.now() > geminiDownUntil) {
+    try {
+      return await callGemini(messages, null, systemText);
+    } catch (err) {
+      geminiDownUntil = Date.now() + 5 * 60 * 1000;
+      console.error('[ai] Gemini failed, falling back to OpenRouter:', err.message);
+    }
+  }
+
+  return callOpenRouter(messages, null, systemText);
+}
+
+/**
+ * Pull the first JSON object/array out of a model reply. Models often wrap
+ * JSON in ```json fences or add a sentence before it, so a bare JSON.parse
+ * on the raw reply is not reliable enough.
+ */
+function parseJsonReply(reply) {
+  const text = String(reply || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.search(/[[{]/);
+    const end = Math.max(text.lastIndexOf(']'), text.lastIndexOf('}'));
+    if (start === -1 || end <= start) throw new Error('The AI reply contained no JSON.');
+    return JSON.parse(text.slice(start, end + 1));
+  }
+}
+
+module.exports = { chat, complete, parseJsonReply };
