@@ -101,20 +101,27 @@ export function SplashScreen({ onReady }: SplashScreenProps) {
   }));
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom + 24 }]}>
-      <Animated.View style={[styles.stack, contentStyle]}>
-        <Animated.Image source={LOGO_SRC} style={[styles.logo, logoStyle]} resizeMode="contain" />
-        <Animated.Image source={WM_SRC} style={[styles.wordmark, wordStyle]} resizeMode="contain" />
-        <Animated.Text style={[styles.tagline, tagStyle]}>Your Edge to Ace CPALE</Animated.Text>
-      </Animated.View>
+    <View
+      style={[
+        styles.container,
+        { paddingTop: insets.top, paddingBottom: insets.bottom },
+      ]}
+    >
+      <View style={styles.centerContent}>
+        <Animated.View style={[styles.stack, contentStyle]}>
+          <Animated.Image source={LOGO_SRC} style={[styles.logo, logoStyle]} resizeMode="contain" />
+          <Animated.Image source={WM_SRC} style={[styles.wordmark, wordStyle]} resizeMode="contain" />
+          <Animated.Text style={[styles.tagline, tagStyle]}>Your Edge to Ace CPALE</Animated.Text>
+        </Animated.View>
 
-      {/* loading bar */}
-      <Animated.View style={[styles.loader, { bottom: insets.bottom + 40 }, loaderStyle]}>
-        <View style={styles.track}>
-          <Animated.View style={[styles.barFill, barFillStyle]} />
-        </View>
-        <Text style={styles.status}>Preparing for your review</Text>
-      </Animated.View>
+        {/* loading bar */}
+        <Animated.View style={[styles.loader, loaderStyle]}>
+          <View style={styles.track}>
+            <Animated.View style={[styles.barFill, barFillStyle]} />
+          </View>
+          <Text style={styles.status}>Preparing for your review</Text>
+        </Animated.View>
+      </View>
 
       {/* maroon color-fill that expands to cover the screen on exit */}
       <Animated.View style={[styles.fill, fillStyle]} pointerEvents="none" />
@@ -124,11 +131,19 @@ export function SplashScreen({ onReady }: SplashScreenProps) {
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
+    width: '100%',
     backgroundColor: '#FFFFFF',
     zIndex: 9999,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  centerContent: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
   },
   stack: {
     alignItems: 'center',
@@ -151,10 +166,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   loader: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
     alignItems: 'center',
+    marginTop: 32,
   },
   track: {
     width: Math.min(SCREEN_W * 0.5, 220),

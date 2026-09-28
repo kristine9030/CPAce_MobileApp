@@ -46,20 +46,24 @@ function RootLayoutNav() {
     } else if (user && inAuth) {
       router.replace('/(tabs)');
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments, router]);
 
   const showSplash = (!fontsLoaded && !fontError) || loading || !splashDone;
 
   if (showSplash) {
     return (
-      <View style={{ flex: 1 }}>
-        <SplashScreen onReady={() => setSplashDone(true)} />
-      </View>
+      <>
+        <StatusBar style="dark" />
+        <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+          <SplashScreen onReady={() => setSplashDone(true)} />
+        </View>
+      </>
     );
   }
 
   return (
     <>
+      <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
@@ -84,7 +88,6 @@ export default function RootLayout() {
         <AiTutorProvider>
           <MessagesProvider>
             <RootLayoutNav />
-            <StatusBar style="light" />
           </MessagesProvider>
         </AiTutorProvider>
       </AuthProvider>

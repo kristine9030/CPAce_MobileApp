@@ -1,15 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
-  Alert, Image, Dimensions,
+  Alert, Image, Dimensions, Animated, Easing, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/lib/context/auth-context';
-import { C, sp, r } from '@/constants/cpace-theme';
+import { C, sp } from '@/constants/cpace-theme';
 
 const SH = Dimensions.get('window').height;
 
@@ -27,8 +27,43 @@ export default function LoginScreen() {
   const [pass, setPass]   = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading]   = useState(false);
+  const [keyboardShift] = useState(() => new Animated.Value(0));
+  const passwordInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSubscription = Keyboard.addListener(showEvent, event => {
+      const shiftRatio = SH < 720 ? 0.36 : 0.28;
+      const shift = Math.min(120, Math.max(72, event.endCoordinates.height * shiftRatio));
+
+      Animated.timing(keyboardShift, {
+        toValue: -shift,
+        duration: event.duration || 250,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+
+    const hideSubscription = Keyboard.addListener(hideEvent, event => {
+      Animated.timing(keyboardShift, {
+        toValue: 0,
+        duration: event.duration || 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [keyboardShift]);
 
   const handleLogin = async () => {
+    if (loading) return;
+
     if (!email.trim() || !pass) {
       Alert.alert('Required', 'Please enter your email and password.');
       return;
@@ -60,8 +95,19 @@ export default function LoginScreen() {
           <View style={s.shapeE} />
         </View>
 
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <KeyboardAvoidingView
+          style={s.keyboardView}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            contentContainerStyle={s.scroll}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            showsVerticalScrollIndicator={false}
+          >
+            <Animated.View
+              style={[s.animatedContent, { transform: [{ translateY: keyboardShift }] }]}
+            >
 
             {/* ── Brand section ── */}
             <View style={s.brand}>
@@ -88,6 +134,9 @@ export default function LoginScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  returnKeyType="next"
+                  submitBehavior="submit"
+                  onSubmitEditing={() => passwordInputRef.current?.focus()}
                 />
               </View>
 
@@ -96,12 +145,16 @@ export default function LoginScreen() {
               <View style={s.inputWrap}>
                 <Ionicons name="lock-closed-outline" size={18} color={C.muted} style={s.inputIcon} />
                 <TextInput
+                  ref={passwordInputRef}
                   style={[s.input, { flex: 1 }]}
                   value={pass}
                   onChangeText={setPass}
                   placeholder="••••••••"
                   placeholderTextColor={C.light}
                   secureTextEntry={!showPass}
+                  returnKeyType="done"
+                  submitBehavior="blurAndSubmit"
+                  onSubmitEditing={() => handleLogin()}
                 />
                 <TouchableOpacity onPress={() => setShowPass(v => !v)} style={s.eye}>
                   <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.muted} />
@@ -129,6 +182,8 @@ export default function LoginScreen() {
 
             </View>
 
+            </Animated.View>
+
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
@@ -139,7 +194,9 @@ export default function LoginScreen() {
 const s = StyleSheet.create({
   safe:     { flex: 1, backgroundColor: '#4A0A0C' },
   gradient: { flex: 1 },
+  keyboardView: { flex: 1 },
   scroll:   { flexGrow: 1 },
+  animatedContent: { flexGrow: 1 },
 
   // Abstract decorative shapes
   shapeA: { position: 'absolute', top: -60, right: -70, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.055)' },
