@@ -6,7 +6,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useNetInfo } from '@react-native-community/netinfo';
 import client from '@/lib/api/client';
+import { useAuth } from '@/lib/context/auth-context';
+import {
+  cacheQuizSession,
+  discardActiveQuizzes,
+  getPendingQuizCount,
+} from '@/lib/offline-quizzes';
+import {
+  createQuizFromOfflineBank,
+  getOfflineBankSubjects,
+  refreshOfflineQuestionBankIfStale,
+} from '@/lib/offline-question-bank';
+import { useReconnectRefresh } from '@/lib/reconnect-refresh';
 import { C, sp, r, sh, font, type, grad } from '@/constants/cpace-theme';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { GradientBorder, GradientButton, GradientFill } from '@/components/ui/gradient';
@@ -38,6 +51,8 @@ const ITEMS_OPTIONS = [5, 10, 20, 30, 50] as const;
 
 export default function QuizzesScreen() {
   const router              = useRouter();
+  const { user }            = useAuth();
+  const network             = useNetInfo();
   const params              = useLocalSearchParams<{ subjectId?: string; subjectCode?: string }>();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [mode, setMode]         = useState<string>('adaptive');
@@ -47,6 +62,8 @@ export default function QuizzesScreen() {
   const [customItems, setCustomItems]         = useState<string>('');
   const [loading, setLoading]                 = useState(true);
   const [starting, setStarting]               = useState(false);
+  const [pendingCount, setPendingCount]       = useState(0);
+  const online = network.isConnected !== false && network.isInternetReachable !== false;
 
   // Live Room: four AI candidates race the student through the quiz. Purely
   // cosmetic on Ranked; opting into Practice swaps in a user-picked
@@ -59,18 +76,34 @@ export default function QuizzesScreen() {
     try {
       const res = await client.get('/subjects');
       setSubjects(res.data.subjects ?? res.data);
-    } catch {}
+    } catch {
+      if (user) setSubjects(await getOfflineBankSubjects(user.id));
+    }
     setLoading(false);
-  }, []);
+  }, [user]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  useReconnectRefresh(load);
 
   useFocusEffect(useCallback(() => {
     (async () => {
       setLiveRoomOn(await getLiveRoomPref());
       setRoomMode(await getRoomModePref());
+      if (user) {
+        const abandonedSessionIds = await discardActiveQuizzes(user.id);
+        if (online) {
+          await Promise.all(abandonedSessionIds
+            .filter(sessionId => sessionId > 0)
+            .map(sessionId => client.post(`/quizzes/${sessionId}/cancel`).catch(() => {})));
+        }
+        if (online) {
+          try { await refreshOfflineQuestionBankIfStale(user.id); } catch {}
+        }
+        if (!subjects.length) setSubjects(await getOfflineBankSubjects(user.id));
+        setPendingCount(await getPendingQuizCount(user.id));
+      }
     })();
-  }, []));
+  }, [online, subjects.length, user]));
 
   const toggleSubject = (id: number) => {
     setSelectedSubjects((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
@@ -91,23 +124,53 @@ export default function QuizzesScreen() {
     setRoomModePref(m);
   };
 
-  const startQuiz = async () => {
+  const quizPayload = () => {
+    const payload: Record<string, any> = { mode, num_items: numItems, session_type: sessionType };
+    if (mode === 'topic' && selectedSubjects.length) payload.subject_ids = selectedSubjects;
+    if (liveRoomOn && roomMode === 'practice') {
+      payload.is_practice_room = true;
+      payload.practice_difficulty = practiceDifficulty;
+    }
+    return payload;
+  };
+
+  const validateQuizOptions = () => {
     if (mode === 'topic' && selectedSubjects.length === 0) {
       Alert.alert('Select a Subject', 'Please choose at least one subject for Topic mode.');
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const createCachedQuiz = async () => {
+    if (!user) throw new Error('Please sign in before saving a quiz.');
+    const res = await client.post('/quizzes/start', quizPayload());
+    const sessionRes = await client.get(`/quizzes/${res.data.session_id}`);
+    const cached = await cacheQuizSession(user.id, {
+      ...sessionRes.data,
+      offline_live_room: liveRoomOn,
+    }, { startTimer: true });
+    if (!cached) throw new Error('The quiz could not be saved on this device.');
+    return cached;
+  };
+
+  const startQuiz = async () => {
+    if (!validateQuizOptions()) return;
     setStarting(true);
     try {
-      const payload: Record<string, any> = { mode, num_items: numItems, session_type: sessionType };
-      if (mode === 'topic' && selectedSubjects.length) payload.subject_ids = selectedSubjects;
-      if (liveRoomOn && roomMode === 'practice') {
-        payload.is_practice_room = true;
-        payload.practice_difficulty = practiceDifficulty;
-      }
-      const res = await client.post('/quizzes/start', payload);
+      const cached = online
+        ? await createCachedQuiz()
+        : await createQuizFromOfflineBank(user!.id, {
+            mode,
+            sessionType,
+            subjectIds: selectedSubjects,
+            count: numItems,
+            isPracticeRoom: liveRoomOn && roomMode === 'practice',
+            practiceDifficulty: liveRoomOn && roomMode === 'practice' ? practiceDifficulty : null,
+          });
       router.push({
         pathname: '/quiz/[id]',
-        params: { id: String(res.data.session_id), liveRoom: liveRoomOn ? '1' : '0' },
+        params: { id: String(cached.sessionId), liveRoom: online && liveRoomOn ? '1' : '0' },
       });
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Could not start quiz.');
@@ -137,6 +200,24 @@ export default function QuizzesScreen() {
       />
 
       <ScrollView contentContainerStyle={{ padding: sp.md }}>
+
+        {!online && (
+          <View style={s.offlineBanner}>
+            <Ionicons name="cloud-offline-outline" size={18} color={C.warning} />
+            <Text style={s.offlineBannerText}>
+              You&apos;re offline. New quizzes will be created from your saved question bank.
+            </Text>
+          </View>
+        )}
+
+        {pendingCount > 0 && (
+          <View style={s.pendingBanner}>
+            <Ionicons name="cloud-upload-outline" size={18} color={C.primary} />
+            <Text style={s.offlineBannerText}>
+              {pendingCount} completed quiz{pendingCount > 1 ? 'zes are' : ' is'} waiting to sync.
+            </Text>
+          </View>
+        )}
 
         {/* Mode Selection */}
         <Text style={s.sectionTitle}>Quiz Mode</Text>
@@ -293,7 +374,7 @@ export default function QuizzesScreen() {
                 <Ionicons name="options" size={14} color={roomMode === 'practice' ? C.primary : C.muted} />
                 <Text style={[s.roomModeTitle, roomMode === 'practice' && s.roomModeTitleActive]}>Practice Room</Text>
               </View>
-              <Text style={s.roomModeDesc}>Pick the rivals' difficulty yourself. For training only — not counted in your records.</Text>
+              <Text style={s.roomModeDesc}>Pick the rivals&apos; difficulty yourself. For training only — not counted in your records.</Text>
               {roomMode === 'practice' && (
                 <View style={s.diffRow}>
                   {PRACTICE_DIFFICULTIES.map((d) => (
@@ -358,9 +439,12 @@ export default function QuizzesScreen() {
           contentStyle={s.startBtn}
           onPress={startQuiz}
           loading={starting}
+          disabled={starting}
         >
           <Ionicons name="play" size={20} color={C.white} />
-          <Text style={s.startText}>Start {currentMode.label} Quiz</Text>
+          <Text style={s.startText}>
+            {online ? `Start ${currentMode.label} Quiz` : `Start ${currentMode.label} Quiz Offline`}
+          </Text>
         </GradientButton>
 
       </ScrollView>
@@ -395,6 +479,9 @@ const s = StyleSheet.create({
   customLabel:   { fontSize: 13, fontFamily: font.medium, color: C.muted },
   customInput:   { flex: 1, paddingHorizontal: sp.md, paddingVertical: 8, borderRadius: r.md, backgroundColor: 'rgba(255,255,255,0.78)', borderWidth: 1, borderColor: C.border, fontSize: 15, fontFamily: font.semiBold, color: C.text },
   noticeText:    { fontSize: 13, fontFamily: font.regular, color: C.muted, textAlign: 'center', marginVertical: sp.sm, fontStyle: 'italic' },
+  offlineBanner: { flexDirection: 'row', alignItems: 'center', gap: sp.sm, padding: sp.md, borderRadius: r.lg, backgroundColor: C.warning + '18', borderWidth: 1, borderColor: C.warning + '50', marginBottom: sp.md },
+  offlineBannerText: { flex: 1, fontSize: 12.5, fontFamily: font.medium, color: C.text },
+  pendingBanner: { flexDirection: 'row', alignItems: 'center', gap: sp.sm, padding: sp.md, borderRadius: r.lg, backgroundColor: C.primary + '10', borderWidth: 1, borderColor: C.primary + '35', marginBottom: sp.md },
   liveRoomToggle:{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: r.lg, padding: sp.md, borderWidth: 1, borderColor: C.border, marginBottom: sp.sm },
   liveRoomToggleOn:{ borderColor: C.primary, backgroundColor: 'rgba(123,20,22,0.04)' },
   newBadge:      { backgroundColor: C.primary, borderRadius: r.sm, paddingHorizontal: 6, paddingVertical: 1 },

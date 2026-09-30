@@ -5,7 +5,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import NetInfo from '@react-native-community/netinfo';
 import client from '@/lib/api/client';
+import { useAuth } from '@/lib/context/auth-context';
+import { getSyncedQuizSessionId, syncPendingQuizzes } from '@/lib/offline-quizzes';
 import { C, sp, r, sh, font, type, grad } from '@/constants/cpace-theme';
 import { GradientButton, GradientFill } from '@/components/ui/gradient';
 import { takeRoomSummary, type RoomSummary } from '@/lib/liveRoom';
@@ -33,34 +36,105 @@ interface Results {
 }
 
 export default function QuizResultsScreen() {
-  const { id }                  = useLocalSearchParams<{ id: string }>();
+  const { id, pending }         = useLocalSearchParams<{ id: string; pending?: string }>();
   const router                  = useRouter();
+  const { user, offline, refreshUser } = useAuth();
   const [results, setResults]   = useState<Results | null>(null);
   const [loading, setLoading]   = useState(true);
+  const [pendingSync, setPendingSync] = useState(pending === '1');
   const [showDetails, setShowDetails] = useState(false);
   const [room, setRoom]         = useState<RoomSummary | null>(null);
 
   useEffect(() => {
-    (async () => {
+    let active = true;
+    const load = async () => {
       try {
-        const res = await client.get(`/quizzes/${id}/results`);
-        setResults(res.data);
-      } catch (err: any) {
+        const wasPending = pendingSync;
+        if (user && wasPending) await syncPendingQuizzes(user.id);
+        const localId = Number(id);
+        const resultSessionId = user && localId < 0
+          ? await getSyncedQuizSessionId(localId, user.id)
+          : localId;
+        if (!resultSessionId) throw new Error('Quiz is still waiting to sync.');
+        const res = await client.get(`/quizzes/${resultSessionId}/results`);
+        if (active) {
+          setResults(res.data);
+          setPendingSync(false);
+          if (wasPending) await refreshUser();
+        }
+      } catch {
         // session might not be complete yet — try fetching quiz history
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
+    };
+
+    load();
+    const unsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected && state.isInternetReachable !== false) load();
+    });
+    (async () => {
       // Live Room ran entirely on-device during the quiz, so the finishing
       // standing is handed over through storage rather than the API.
-      setRoom(await takeRoomSummary(Number(id)));
+      const summary = await takeRoomSummary(Number(id));
+      if (active) setRoom(summary);
     })();
-  }, [id]);
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [id, pendingSync, refreshUser, user]);
 
   if (loading) {
     return <View style={s.center}><ActivityIndicator size="large" color={C.accent} /></View>;
   }
 
   if (!results) {
+    if (pendingSync) {
+      return (
+        <SafeAreaView style={s.safe}>
+          <View style={s.center}>
+            <View style={s.pendingIcon}>
+              <Ionicons name="cloud-upload-outline" size={34} color={C.primary} />
+            </View>
+            <Text style={s.pendingTitle}>Quiz saved offline</Text>
+            <Text style={s.pendingText}>
+              Your answers are safe on this device. Your official score, points, and streak will update when you reconnect.
+            </Text>
+            {!offline && (
+              <GradientButton
+                radius={r.lg}
+                contentStyle={s.backBtn}
+                onPress={async () => {
+                  if (!user) return;
+                  setLoading(true);
+                  await syncPendingQuizzes(user.id);
+                  try {
+                    const localId = Number(id);
+                    const resultSessionId = localId < 0
+                      ? await getSyncedQuizSessionId(localId, user.id)
+                      : localId;
+                    if (!resultSessionId) return;
+                    const res = await client.get(`/quizzes/${resultSessionId}/results`);
+                    setResults(res.data);
+                    setPendingSync(false);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              >
+                <Ionicons name="sync" size={18} color={C.white} />
+                <Text style={s.backBtnText}>Sync Now</Text>
+              </GradientButton>
+            )}
+            <TouchableOpacity onPress={() => router.replace('/(tabs)')}>
+              <Text style={s.dashboardLink}>Go to Dashboard</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      );
+    }
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.center}>
@@ -256,4 +330,8 @@ const s = StyleSheet.create({
   actionBtnText:{ color: C.white, fontFamily: font.bold, fontSize: 15 },
   backBtn:     { paddingHorizontal: sp.xl, paddingVertical: sp.md },
   backBtnText: { color: C.white, fontFamily: font.bold },
+  pendingIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: C.primary + '14' },
+  pendingTitle:{ fontSize: 22, fontFamily: font.extraBold, color: C.text },
+  pendingText: { maxWidth: 320, textAlign: 'center', fontSize: 13.5, lineHeight: 20, fontFamily: font.regular, color: C.muted },
+  dashboardLink:{ fontSize: 14, fontFamily: font.semiBold, color: C.accent },
 });

@@ -1,18 +1,23 @@
 import { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, Image, Switch,
+  TextInput, Alert, Image, Switch, ActivityIndicator,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client, { MOCK_MODE } from '@/lib/api/client';
 import { useAuth } from '@/lib/context/auth-context';
-import { C, sp, r, sh, font, type } from '@/constants/cpace-theme';
+import { C, sp, r, font, type } from '@/constants/cpace-theme';
 import { ScreenHeader } from '@/components/ui/screen-header';
-import { GradientButton, GradientFill } from '@/components/ui/gradient';
+import { GradientButton } from '@/components/ui/gradient';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const AVATAR_COLORS = [
+  '#8E1B1F', '#C6382D', '#2864DC', '#13958C', '#079669',
+  '#7738E8', '#D4266C', '#DD7300', '#213F64', '#4B5A70',
+];
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -21,15 +26,80 @@ export default function SettingsScreen() {
   const [firstName, setFirstName] = useState(user?.first_name ?? '');
   const [lastName, setLastName]   = useState(user?.last_name ?? '');
   const [examDate, setExamDate]   = useState(user?.exam_target_date ?? '');
+  const [avatarColor, setAvatarColor] = useState(user?.avatar_color ?? AVATAR_COLORS[0]);
   const [reminders, setReminders] = useState(true);
   const [saving, setSaving]       = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
 
   const initials = (user?.first_name?.[0] ?? '') + (user?.last_name?.[0] ?? '');
 
   const dirty =
     firstName !== (user?.first_name ?? '') ||
     lastName !== (user?.last_name ?? '') ||
-    (examDate || '') !== (user?.exam_target_date ?? '');
+    (examDate || '') !== (user?.exam_target_date ?? '') ||
+    avatarColor !== (user?.avatar_color ?? AVATAR_COLORS[0]);
+
+  const chooseProfilePhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission Required', 'Please allow photo access to choose a profile picture.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+    const form = new FormData();
+    if (asset.file) {
+      form.append('photo', asset.file);
+    } else {
+      const extension = asset.fileName?.split('.').pop()?.toLowerCase() || 'jpg';
+      form.append('photo', {
+        uri: asset.uri,
+        name: asset.fileName || `profile-photo.${extension}`,
+        type: asset.mimeType || (extension === 'png' ? 'image/png' : 'image/jpeg'),
+      } as any);
+    }
+
+    setPhotoBusy(true);
+    try {
+      await client.post('/profile/photo', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      await refreshUser();
+    } catch (err: any) {
+      Alert.alert('Upload Failed', err.message || 'Could not upload your profile photo.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const removeProfilePhoto = () => {
+    Alert.alert('Remove Photo', 'Use your initials and selected avatar color instead?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          setPhotoBusy(true);
+          try {
+            await client.delete('/profile/photo');
+            await refreshUser();
+          } catch (err: any) {
+            Alert.alert('Error', err.message || 'Could not remove your profile photo.');
+          } finally {
+            setPhotoBusy(false);
+          }
+        },
+      },
+    ]);
+  };
 
   const save = async () => {
     if (!firstName.trim() || !lastName.trim()) {
@@ -46,6 +116,7 @@ export default function SettingsScreen() {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         exam_target_date: examDate || null,
+        avatar_color: avatarColor,
       });
       await refreshUser();
       Alert.alert('Saved', 'Your profile has been updated.');
@@ -75,9 +146,9 @@ export default function SettingsScreen() {
           {user?.profile_photo ? (
             <Image source={{ uri: user.profile_photo }} style={s.avatar} />
           ) : (
-            <GradientFill style={[s.avatar, s.avatarFallback]}>
+            <View style={[s.avatar, s.avatarFallback, { backgroundColor: avatarColor }]}>
               <Text style={s.avatarInitials}>{initials}</Text>
-            </GradientFill>
+            </View>
           )}
           <View style={{ flex: 1, marginLeft: sp.md }}>
             <Text style={s.profileName}>{user?.first_name} {user?.last_name}</Text>
@@ -100,6 +171,56 @@ export default function SettingsScreen() {
         <Text style={s.sectionTitle}>Profile</Text>
         <View style={[s.cardWrap]}>
           <View style={s.card}>
+          <View style={s.avatarEditorRow}>
+            {user?.profile_photo ? (
+              <Image source={{ uri: user.profile_photo }} style={s.editorAvatar} />
+            ) : (
+              <View style={[s.editorAvatar, s.avatarFallback, { backgroundColor: avatarColor }]}>
+                <Text style={s.editorInitials}>{initials}</Text>
+              </View>
+            )}
+            <View style={s.photoActions}>
+              <TouchableOpacity
+                style={s.photoButton}
+                onPress={chooseProfilePhoto}
+                disabled={photoBusy}
+                activeOpacity={0.75}
+              >
+                {photoBusy ? (
+                  <ActivityIndicator size="small" color={C.primary} />
+                ) : (
+                  <Ionicons name="camera" size={17} color={C.primary} />
+                )}
+                <Text style={s.photoButtonText}>{user?.profile_photo ? 'Change photo' : 'Upload photo'}</Text>
+              </TouchableOpacity>
+              {user?.profile_photo && (
+                <TouchableOpacity onPress={removeProfilePhoto} disabled={photoBusy}>
+                  <Text style={s.removePhotoText}>Remove photo</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {!user?.profile_photo && (
+            <View style={s.colorSection}>
+              <Text style={s.colorLabel}>Avatar color <Text style={s.colorHint}>(used when there&apos;s no photo)</Text></Text>
+              <View style={s.colorPalette}>
+                {AVATAR_COLORS.map(color => (
+                  <TouchableOpacity
+                    key={color}
+                    style={[s.colorChoice, { backgroundColor: color }]}
+                    onPress={() => setAvatarColor(color)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: avatarColor === color }}
+                    accessibilityLabel={`Use avatar color ${color}`}
+                  >
+                    {avatarColor === color && <Ionicons name="checkmark" size={20} color={C.white} />}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
           <Text style={s.label}>First Name</Text>
           <TextInput
             style={s.input}
@@ -219,6 +340,18 @@ const s = StyleSheet.create({
   avatar:         { width: 56, height: 56, borderRadius: 28 },
   avatarFallback: { justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   avatarInitials: { color: C.white, fontSize: 20, fontFamily: font.bold },
+  avatarEditorRow: { flexDirection: 'row', alignItems: 'center', marginBottom: sp.md },
+  editorAvatar:    { width: 80, height: 80, borderRadius: 20 },
+  editorInitials:  { color: C.white, fontSize: 24, fontFamily: font.bold },
+  photoActions:    { marginLeft: sp.md, alignItems: 'flex-start', gap: 8 },
+  photoButton:     { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: C.primary, borderRadius: r.md, paddingHorizontal: 16 },
+  photoButtonText: { color: C.primary, fontSize: 14, fontFamily: font.semiBold },
+  removePhotoText: { color: C.danger, fontSize: 12, fontFamily: font.semiBold },
+  colorSection:    { marginBottom: sp.md },
+  colorLabel:      { fontSize: 13, fontFamily: font.semiBold, color: C.muted, marginBottom: 10 },
+  colorHint:       { fontFamily: font.regular, color: C.light },
+  colorPalette:    { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  colorChoice:     { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   profileName:    { fontSize: 17, fontFamily: font.extraBold, color: C.text },
   profileEmail:   { fontSize: 13, fontFamily: font.regular, color: C.muted, marginTop: 1 },
   statsRow:       { flexDirection: 'row', gap: sp.sm, marginTop: sp.xs },

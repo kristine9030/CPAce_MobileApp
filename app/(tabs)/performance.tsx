@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
+import { useReconnectRefresh } from '@/lib/reconnect-refresh';
 import { C, sp, r, font, type } from '@/constants/cpace-theme';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { GradientFill } from '@/components/ui/gradient';
@@ -98,6 +99,7 @@ export default function PerformanceScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  useReconnectRefresh(() => load(true));
 
   if (loading) {
     return <View style={s.center}><ActivityIndicator size="large" color={C.accent} /></View>;

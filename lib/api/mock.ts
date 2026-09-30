@@ -13,6 +13,7 @@ const USER = {
   name: 'Juan dela Cruz',
   email: 'juan@cpace.com',
   profile_photo: null as string | null,
+  avatar_color: '#8E1B1F',
   streak_days: 7,
   total_points: 420,
   exam_target_date: '2026-10-15',
@@ -580,6 +581,7 @@ export async function mockRequest(method: string, url: string, body?: any): Prom
     if (body?.first_name != null)       USER.first_name = String(body.first_name);
     if (body?.last_name != null)        USER.last_name  = String(body.last_name);
     if (body?.exam_target_date !== undefined) USER.exam_target_date = body.exam_target_date || null as any;
+    if (body?.avatar_color != null)     USER.avatar_color = String(body.avatar_color);
     USER.name = `${USER.first_name} ${USER.last_name}`;
     return { ok: true, user: USER };
   }

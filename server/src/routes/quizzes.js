@@ -12,7 +12,7 @@ const streakService = require('../services/streak');
 const scheduler = require('../services/scheduler');
 const rivalTiers = require('../services/rivalTiers');
 const { evaluateAndAward } = require('./achievements');
-const { nowSql, parseSql, toIso } = require('../utils/dates');
+const { nowSql, parseSql, toIso, toSqlDateTime } = require('../utils/dates');
 
 const router = express.Router();
 
@@ -184,6 +184,117 @@ function timeLimitMinutes(session, totalItems) {
 
 // ── Routes ─────────────────────────────────────────────────────────────────
 
+router.get('/quizzes/offline-bank', apiAuth, async (req, res, next) => {
+  try {
+    const [subjects, questions, choices] = await Promise.all([
+      q('SELECT id, code, name, color FROM subjects WHERE is_active = 1 ORDER BY id'),
+      q(`SELECT qu.id, qu.topic_id, qu.question_text, qu.question_type, qu.difficulty, qu.explanation,
+                t.subject_id
+           FROM questions qu
+           JOIN topics t ON t.id = qu.topic_id
+           JOIN subjects s ON s.id = t.subject_id
+          WHERE qu.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
+          ORDER BY qu.id`),
+      q(`SELECT qc.id, qc.question_id, qc.choice_text, qc.is_correct
+           FROM question_choices qc
+           JOIN questions qu ON qu.id = qc.question_id
+          WHERE qu.is_active = 1
+          ORDER BY qc.question_id, qc.id`),
+    ]);
+
+    const choicesByQuestion = new Map();
+    for (const choice of choices) {
+      if (!choicesByQuestion.has(choice.question_id)) choicesByQuestion.set(choice.question_id, []);
+      choicesByQuestion.get(choice.question_id).push(choice);
+    }
+
+    res.json({
+      synced_at: new Date().toISOString(),
+      subjects,
+      questions: questions.map(question => ({
+        question_id: question.id,
+        subject_id: question.subject_id,
+        topic_id: question.topic_id,
+        question_text: question.question_text,
+        question_type: question.question_type,
+        difficulty: question.difficulty,
+        explanation: question.explanation,
+        options: (choicesByQuestion.get(question.id) || []).map((choice, index) => ({
+          id: choice.id,
+          letter: LETTERS[index] || String(index + 1),
+          text: choice.choice_text,
+          is_correct: Boolean(choice.is_correct),
+        })),
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
+router.post('/quizzes/offline-start', apiAuth, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const questionIds = [...new Set(
+      (Array.isArray(body.question_ids) ? body.question_ids : [])
+        .map(Number)
+        .filter(Number.isFinite)
+    )].slice(0, MAX_QUIZ_LENGTH);
+    if (!questionIds.length) return res.status(422).json({ message: 'No offline questions were supplied.' });
+
+    const questions = await q(
+      `SELECT qu.id, qu.topic_id, t.subject_id
+         FROM questions qu
+         JOIN topics t ON t.id = qu.topic_id
+        WHERE qu.is_active = 1 AND qu.id IN (?)`,
+      [questionIds]
+    );
+    if (questions.length !== questionIds.length) {
+      return res.status(422).json({ message: 'One or more offline questions are no longer available.' });
+    }
+
+    const mode = MODES.includes(body.mode) ? body.mode : 'adaptive';
+    const sessionType = ['training', 'testing'].includes(body.session_type) ? body.session_type : 'testing';
+    const subjectIds = [...new Set(questions.map(question => Number(question.subject_id)))];
+    const topicIds = [...new Set(questions.map(question => Number(question.topic_id)))];
+    const subjectId = subjectIds.length === 1 ? subjectIds[0] : null;
+    const topicId = mode === 'topic' && topicIds.length === 1 ? topicIds[0] : null;
+    const isPracticeRoom = Boolean(body.is_practice_room) && Boolean(PRACTICE_TIERS[body.practice_difficulty]);
+    const practiceDifficulty = isPracticeRoom ? body.practice_difficulty : null;
+    const requestedStart = body.started_at ? new Date(body.started_at) : null;
+    const serverNow = new Date();
+    const startedAt = requestedStart
+      && !Number.isNaN(requestedStart.getTime())
+      && requestedStart.getTime() <= serverNow.getTime() + 5 * 60 * 1000
+      ? requestedStart
+      : serverNow;
+    const startedAtSql = toSqlDateTime(startedAt);
+
+    const conn = await pool.getConnection();
+    let sessionId;
+    try {
+      await conn.beginTransaction();
+      const [result] = await conn.query(
+        `INSERT INTO quiz_sessions
+          (student_id, session_type, mode, subject_id, topic_id, started_at, total_items, correct_answers, is_practice_room, practice_difficulty)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        [req.user.id, sessionType, mode, subjectId, topicId, startedAtSql, questionIds.length, isPracticeRoom ? 1 : 0, practiceDifficulty]
+      );
+      sessionId = result.insertId;
+      await conn.query(
+        'INSERT INTO quiz_answers (session_id, question_id, answered_at) VALUES ?',
+        [questionIds.map(questionId => [sessionId, questionId, startedAtSql])]
+      );
+      await conn.commit();
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+
+    res.status(201).json({ session_id: sessionId });
+  } catch (err) { next(err); }
+});
+
 router.post('/quizzes/start', apiAuth, async (req, res, next) => {
   try {
     const studentId = req.user.id;
@@ -352,6 +463,23 @@ router.post('/quizzes/:id(\\d+)/submit', apiAuth, async (req, res, next) => {
     }
 
     const now = nowSql();
+    const serverNow = new Date();
+    const startedAt = parseSql(session.started_at);
+    const requestedCompletion = req.body?.completed_at ? new Date(req.body.completed_at) : null;
+    const completionDate = requestedCompletion
+      && !Number.isNaN(requestedCompletion.getTime())
+      && requestedCompletion >= startedAt
+      && requestedCompletion.getTime() <= serverNow.getTime() + 5 * 60 * 1000
+      ? requestedCompletion
+      : serverNow;
+    const requestedStart = req.body?.started_at ? new Date(req.body.started_at) : null;
+    const effectiveStartedAt = requestedStart
+      && !Number.isNaN(requestedStart.getTime())
+      && requestedStart >= startedAt
+      && requestedStart <= completionDate
+      ? requestedStart
+      : startedAt;
+    const completedAt = toSqlDateTime(completionDate);
     let correctCount = 0;
     const topicTally = {};
     const answerResults = [];
@@ -371,7 +499,7 @@ router.post('/quizzes/:id(\\d+)/submit', apiAuth, async (req, res, next) => {
 
         await conn.query(
           'UPDATE quiz_answers SET selected_choice = ?, is_correct = ?, answered_at = ? WHERE session_id = ? AND question_id = ?',
-          [selected, isCorrect ? 1 : 0, now, session.id, question.id]
+          [selected, isCorrect ? 1 : 0, completedAt, session.id, question.id]
         );
 
         if (!topicTally[question.topic_id]) topicTally[question.topic_id] = { attempts: 0, correct: 0 };
@@ -381,11 +509,11 @@ router.post('/quizzes/:id(\\d+)/submit', apiAuth, async (req, res, next) => {
 
       const total = questions.length;
       const scorePercent = total > 0 ? Math.round((correctCount / total) * 10000) / 100 : 0;
-      const durationSecs = Math.max(0, Math.round((parseSql(now).getTime() - parseSql(session.started_at).getTime()) / 1000));
+      const durationSecs = Math.max(0, Math.round((completionDate.getTime() - effectiveStartedAt.getTime()) / 1000));
 
       await conn.query(
         'UPDATE quiz_sessions SET completed_at = ?, correct_answers = ?, score_percent = ?, duration_secs = ? WHERE id = ?',
-        [now, correctCount, scorePercent, durationSecs, session.id]
+        [completedAt, correctCount, scorePercent, durationSecs, session.id]
       );
 
       // Live Room Practice sessions never feed analytics, same as Training.

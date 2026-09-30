@@ -2,12 +2,66 @@
 const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 const { q, one } = require('../db');
 const { apiAuth } = require('../middleware/auth');
 const { nowSql, toSqlDateTime, addDays, parseSql } = require('../utils/dates');
 const { sendResetCode } = require('../services/mailer');
 
 const router = express.Router();
+
+const AVATAR_COLORS = new Set([
+  '#8E1B1F', '#C6382D', '#2864DC', '#13958C', '#079669',
+  '#7738E8', '#D4266C', '#DD7300', '#213F64', '#4B5A70',
+]);
+const PROFILE_UPLOAD_DIR = path.join(__dirname, '..', '..', 'storage', 'profile-photos');
+fs.mkdirSync(PROFILE_UPLOAD_DIR, { recursive: true });
+
+const profilePhotoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, PROFILE_UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const extensions = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+      cb(null, `${req.user.id}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${extensions[file.mimetype]}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) return cb(null, true);
+    cb(new Error('Profile photo must be a JPG, PNG, or WebP image.'));
+  },
+});
+
+function receiveProfilePhoto(req, res, next) {
+  profilePhotoUpload.single('photo')(req, res, (err) => {
+    if (!err) return next();
+    const message = err.code === 'LIMIT_FILE_SIZE'
+      ? 'Profile photo must be 5 MB or smaller.'
+      : err.message;
+    return res.status(422).json({ message });
+  });
+}
+
+let avatarColorColumnReady = false;
+async function ensureAvatarColorColumn() {
+  if (avatarColorColumnReady) return;
+  await q('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_color VARCHAR(7) NULL');
+  avatarColorColumnReady = true;
+}
+
+function profilePhotoUrl(req, value) {
+  if (!value || /^https?:\/\//i.test(value)) return value || null;
+  const cleanPath = String(value).replace(/^\/?storage\//, '');
+  return `${req.protocol}://${req.get('host')}/storage/${cleanPath}`;
+}
+
+function removeUploadedProfilePhoto(value) {
+  if (!value || !String(value).startsWith('profile-photos/')) return;
+  const filePath = path.join(PROFILE_UPLOAD_DIR, path.basename(value));
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+}
 
 // Lazily ensure the reset-code table exists (cpace_db is otherwise managed by
 // the Laravel web migrations, so we create our own small table on demand).
@@ -25,7 +79,7 @@ async function ensureResetTable() {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-async function userPayload(user) {
+async function userPayload(user, req) {
   const profile = await one('SELECT * FROM student_profiles WHERE user_id = ?', [user.id]);
   return {
     id: user.id,
@@ -33,7 +87,8 @@ async function userPayload(user) {
     last_name: user.last_name,
     name: `${user.first_name} ${user.last_name}`,
     email: user.email,
-    profile_photo: user.profile_photo,
+    profile_photo: profilePhotoUrl(req, user.profile_photo),
+    avatar_color: user.avatar_color || '#8E1B1F',
     streak_days: Number(profile?.streak_days ?? 0),
     total_points: Number(profile?.total_points ?? 0),
     exam_target_date: profile?.exam_target_date ?? null,
@@ -77,7 +132,7 @@ router.post('/login', async (req, res, next) => {
     await q('UPDATE users SET last_login_at = ? WHERE id = ?', [nowSql(), user.id]);
 
     const token = await generateToken(user.id);
-    res.json({ token, user: await userPayload(user) });
+    res.json({ token, user: await userPayload(user, req) });
   } catch (err) { next(err); }
 });
 
@@ -112,7 +167,7 @@ router.post('/signup', async (req, res, next) => {
 
     const user = await one('SELECT * FROM users WHERE id = ?', [userId]);
     const token = await generateToken(userId);
-    res.status(201).json({ token, user: await userPayload(user) });
+    res.status(201).json({ token, user: await userPayload(user, req) });
   } catch (err) { next(err); }
 });
 
@@ -192,14 +247,14 @@ router.post('/logout', apiAuth, async (req, res, next) => {
 
 router.get('/user', apiAuth, async (req, res, next) => {
   try {
-    res.json({ user: await userPayload(req.user) });
+    res.json({ user: await userPayload(req.user, req) });
   } catch (err) { next(err); }
 });
 
 // Mobile settings screen: update name + exam target date.
 router.put('/profile', apiAuth, async (req, res, next) => {
   try {
-    const { first_name, last_name, exam_target_date } = req.body || {};
+    const { first_name, last_name, exam_target_date, avatar_color } = req.body || {};
 
     if (first_name != null || last_name != null) {
       await q('UPDATE users SET first_name = COALESCE(?, first_name), last_name = COALESCE(?, last_name) WHERE id = ?', [
@@ -222,8 +277,45 @@ router.put('/profile', apiAuth, async (req, res, next) => {
       }
     }
 
+    if (avatar_color !== undefined) {
+      const color = String(avatar_color).toUpperCase();
+      if (!AVATAR_COLORS.has(color)) {
+        return res.status(422).json({ message: 'Please select a valid avatar color.' });
+      }
+      await ensureAvatarColorColumn();
+      await q('UPDATE users SET avatar_color = ?, updated_at = ? WHERE id = ?', [color, nowSql(), req.user.id]);
+    }
+
     const user = await one('SELECT * FROM users WHERE id = ?', [req.user.id]);
-    res.json({ ok: true, user: await userPayload(user) });
+    res.json({ ok: true, user: await userPayload(user, req) });
+  } catch (err) { next(err); }
+});
+
+router.post('/profile/photo', apiAuth, receiveProfilePhoto, async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(422).json({ message: 'Please select a profile photo.' });
+
+    const previousPhoto = req.user.profile_photo;
+    const storedPath = `profile-photos/${req.file.filename}`;
+    await q('UPDATE users SET profile_photo = ?, updated_at = ? WHERE id = ?', [storedPath, nowSql(), req.user.id]);
+    removeUploadedProfilePhoto(previousPhoto);
+
+    const user = await one('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    res.json({ ok: true, user: await userPayload(user, req) });
+  } catch (err) {
+    if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    next(err);
+  }
+});
+
+router.delete('/profile/photo', apiAuth, async (req, res, next) => {
+  try {
+    const previousPhoto = req.user.profile_photo;
+    await q('UPDATE users SET profile_photo = NULL, updated_at = ? WHERE id = ?', [nowSql(), req.user.id]);
+    removeUploadedProfilePhoto(previousPhoto);
+
+    const user = await one('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    res.json({ ok: true, user: await userPayload(user, req) });
   } catch (err) { next(err); }
 });
 

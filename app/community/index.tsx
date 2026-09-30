@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
+import { useReconnectRefresh } from '@/lib/reconnect-refresh';
 import { C, sp, r, font, grad } from '@/constants/cpace-theme';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { GradientButton, GradientFill } from '@/components/ui/gradient';
@@ -93,6 +94,7 @@ export default function CommunityScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  useReconnectRefresh(() => load(true));
 
   const loadMore = async () => {
     if (loadingMore || page >= lastPage) return;

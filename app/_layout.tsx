@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import * as NativeSplash from 'expo-splash-screen';
+import { useAssets } from 'expo-asset';
 import { useFonts, Poppins_400Regular, Poppins_400Regular_Italic, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, Poppins_900Black } from '@expo-google-fonts/poppins';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/lib/context/auth-context';
@@ -10,6 +11,8 @@ import { AiTutorProvider } from '@/lib/context/ai-tutor-context';
 import { MessagesProvider } from '@/lib/context/messages-context';
 import { AiTutorWidget } from '@/components/ai-tutor/ai-tutor-widget';
 import { SplashScreen } from '@/components/splash-screen';
+import { OfflineSyncManager } from '@/components/offline-sync-manager';
+import { BRAND_ASSETS } from '@/constants/branding-assets';
 
 NativeSplash.preventAutoHideAsync();
 
@@ -27,14 +30,18 @@ function RootLayoutNav() {
     Poppins_900Black,
   });
   const [splashDone, setSplashDone] = useState(false);
+  const [brandAssets, brandAssetError] = useAssets(BRAND_ASSETS);
 
-  // Hide the splash once fonts settle. Also hide on error, otherwise a single
-  // bad font name leaves the splash covering the app forever.
+  // Keep the native splash visible until fonts and locally bundled branding
+  // assets settle. Errors are non-blocking so startup can never hang forever.
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    const fontsReady = fontsLoaded || Boolean(fontError);
+    const brandingReady = Boolean(brandAssets) || Boolean(brandAssetError);
+
+    if (fontsReady && brandingReady) {
       NativeSplash.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, brandAssets, brandAssetError]);
 
   useEffect(() => {
     if (loading) return;
@@ -48,7 +55,11 @@ function RootLayoutNav() {
     }
   }, [user, loading, segments, router]);
 
-  const showSplash = (!fontsLoaded && !fontError) || loading || !splashDone;
+  const showSplash =
+    (!fontsLoaded && !fontError) ||
+    (!brandAssets && !brandAssetError) ||
+    loading ||
+    !splashDone;
 
   if (showSplash) {
     return (
@@ -85,6 +96,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
+        <OfflineSyncManager />
         <AiTutorProvider>
           <MessagesProvider>
             <RootLayoutNav />

@@ -11,11 +11,12 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C } from '@/constants/cpace-theme';
+import { BRAND_LOGO, BRAND_WORDMARK } from '@/constants/branding-assets';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-const LOGO_SRC = require('@/assets/images/logo-icon.png');
-const WM_SRC = require('@/assets/images/wordmark-cropped.png');
+const LOGO_SRC = BRAND_LOGO;
+const WM_SRC = BRAND_WORDMARK;
 
 const _logo = Image.resolveAssetSource(LOGO_SRC);
 const LOGO_RATIO = _logo && _logo.height ? _logo.width / _logo.height : 429 / 457;

@@ -8,6 +8,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useReconnectRefresh } from '@/lib/reconnect-refresh';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring,
   FadeInDown, FadeInUp,
@@ -17,6 +18,7 @@ import { useAuth } from '@/lib/context/auth-context';
 import { useMessages } from '@/lib/context/messages-context';
 import { C, sp, r, grad, gradDir } from '@/constants/cpace-theme';
 import { GradientBorder, GradientFill } from '@/components/ui/gradient';
+import { BRAND_LOGO, BRAND_WORDMARK } from '@/constants/branding-assets';
 
 const SW = Dimensions.get('window').width;
 const SUBJECT_CARD_W = 120;
@@ -415,6 +417,7 @@ export default function DashboardScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  useReconnectRefresh(() => load(true));
 
   const buildRecommendations = (dashboard: DashboardData) => {
     const recs: TopicRecommendation[] = [];
@@ -551,9 +554,9 @@ export default function DashboardScreen() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Image source={require('@/assets/images/logo-icon.png')} style={styles.logoImg} resizeMode="contain" />
+          <Image source={BRAND_LOGO} style={styles.logoImg} resizeMode="contain" />
           <View>
-            <Image source={require('@/assets/images/wordmark-cropped.png')} style={styles.wordmarkImg} resizeMode="contain" />
+            <Image source={BRAND_WORDMARK} style={styles.wordmarkImg} resizeMode="contain" />
             <Text style={styles.appTagline}>Your Edge to CPALE</Text>
           </View>
         </View>
@@ -573,7 +576,7 @@ export default function DashboardScreen() {
             {user?.profile_photo ? (
               <Image source={{ uri: user.profile_photo }} style={styles.avatar} />
             ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
+              <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: user?.avatar_color || C.primary }]}>
                 <Text style={styles.avatarInitials}>{initials}</Text>
               </View>
             )}
@@ -590,7 +593,7 @@ export default function DashboardScreen() {
               {user?.profile_photo ? (
                 <Image source={{ uri: user.profile_photo }} style={styles.menuAvatar} />
               ) : (
-                <View style={[styles.menuAvatar, styles.avatarFallback]}>
+                <View style={[styles.menuAvatar, styles.avatarFallback, { backgroundColor: user?.avatar_color || C.primary }]}>
                   <Text style={[styles.avatarInitials, { fontSize: 14 }]}>{initials}</Text>
                 </View>
               )}

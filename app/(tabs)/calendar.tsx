@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
+import { useReconnectRefresh } from '@/lib/reconnect-refresh';
 import { C, sp, r, font } from '@/constants/cpace-theme';
 import { GradientButton, GradientFill } from '@/components/ui/gradient';
 
@@ -161,6 +162,7 @@ export default function CalendarScreen() {
   useFocusEffect(useCallback(() => {
     load([weekStart, addDays(weekStart, 6), selected]);
   }, [load, weekStart, selected]));
+  useReconnectRefresh(() => load([weekStart, addDays(weekStart, 6), selected], true));
 
   const anchor    = months[monthKey(selected)];
   const monthName = anchor?.month_name

@@ -8,6 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import client from '@/lib/api/client';
+import { useReconnectRefresh } from '@/lib/reconnect-refresh';
 import { C, sp, r, grad } from '@/constants/cpace-theme';
 import { GradientButton, GradientFill } from '@/components/ui/gradient';
 
@@ -76,6 +77,7 @@ export default function SubjectDetailScreen() {
   }, [subjectId]);
 
   useEffect(() => { load(); }, [load]);
+  useReconnectRefresh(load);
 
   const subjectImg = SUBJECT_IMAGES[subjectCode ?? ''];
   const displaySubject: Partial<SubjectInfo> =

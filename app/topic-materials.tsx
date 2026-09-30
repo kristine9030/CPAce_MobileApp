@@ -8,6 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import client from '@/lib/api/client';
+import { useReconnectRefresh } from '@/lib/reconnect-refresh';
 import { C, sp, r } from '@/constants/cpace-theme';
 import { GradientButton } from '@/components/ui/gradient';
 
@@ -84,6 +85,7 @@ export default function TopicMaterialsScreen() {
   }, [subjectId, topicId]);
 
   useEffect(() => { load(); }, [load]);
+  useReconnectRefresh(load);
 
   const open = async (material: Material) => {
     if (!material.url) {

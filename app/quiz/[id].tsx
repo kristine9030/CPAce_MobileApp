@@ -1,12 +1,22 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, Alert,
+  ActivityIndicator, Alert, BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
+import { useAuth } from '@/lib/context/auth-context';
+import {
+  cacheQuizSession,
+  getCachedQuiz,
+  isNetworkError,
+  queueQuizSubmission,
+  removeCachedQuiz,
+  saveQuizProgress,
+  markCachedQuizOpened,
+} from '@/lib/offline-quizzes';
 import { C, sp, r, font, grad } from '@/constants/cpace-theme';
 import { GradientButton, GradientFill } from '@/components/ui/gradient';
 import { useLiveRoom, type RivalTier } from '@/lib/liveRoom';
@@ -30,11 +40,23 @@ interface Session {
   total_items: number;
   is_practice_room?: boolean;
   rival_pool?: RivalTier[];
+  offline_live_room?: boolean;
+  offline_created?: boolean;
+  offline_config?: {
+    mode: string;
+    session_type: string;
+    subject_ids: number[];
+    is_practice_room: boolean;
+    practice_difficulty: string | null;
+    question_ids: number[];
+  };
 }
 
 export default function TakeQuizScreen() {
   const { id, liveRoom }     = useLocalSearchParams<{ id: string; liveRoom?: string }>();
   const router              = useRouter();
+  const { user, offline }   = useAuth();
+  const userId              = user?.id;
   const [session, setSession]   = useState<Session | null>(null);
   const [loading, setLoading]   = useState(true);
   const [current, setCurrent]   = useState(0);
@@ -42,8 +64,12 @@ export default function TakeQuizScreen() {
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft]     = useState<number | null>(null);
+  const [deadlineAt, setDeadlineAt] = useState<number | null>(null);
+  const [openedAt, setOpenedAt]     = useState<number | null>(null);
+  const [usingSavedCopy, setUsingSavedCopy] = useState(false);
   const [roomSheetOpen, setRoomSheetOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const submitRef = useRef<() => void>(() => {});
 
   const room = useLiveRoom({
     enabled: liveRoom !== '0',
@@ -56,35 +82,50 @@ export default function TakeQuizScreen() {
   });
 
   useEffect(() => {
-    loadSession();
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [id]);
+    let active = true;
+    (async () => {
+      if (!userId) return;
+      try {
+        let cached;
+        try {
+          const res = await client.get(`/quizzes/${id}`);
+          cached = await cacheQuizSession(userId, res.data);
+          if (active) setUsingSavedCopy(false);
+        } catch (err) {
+          cached = await getCachedQuiz<Session>(Number(id), userId);
+          if (!cached) throw err;
+          if (active) setUsingSavedCopy(true);
+        }
 
-  const loadSession = async () => {
-    try {
-      const res = await client.get(`/quizzes/${id}`);
-      setSession(res.data);
-      if (res.data.time_limit) {
-        const totalSec = res.data.time_limit * 60;
-        setTimeLeft(totalSec);
+        if (!active || !cached) return;
+        const opened = await markCachedQuizOpened(
+          cached.sessionId,
+          userId,
+          cached.session.time_limit ? Number(cached.session.time_limit) : null,
+        );
+        if (!active) return;
+        setSession(cached.session);
+        setAnswers(cached.answers);
+        setRevealed(cached.revealed);
+        setCurrent(Math.min(cached.currentIndex, Math.max(0, cached.session.questions.length - 1)));
+        setDeadlineAt(opened.deadlineAt);
+        setOpenedAt(opened.openedAt);
+        if (opened.deadlineAt) {
+          setTimeLeft(Math.max(0, Math.ceil((opened.deadlineAt - Date.now()) / 1000)));
+        }
+      } catch {
+        Alert.alert('Quiz Unavailable', 'Connect to the internet once to download this quiz.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      } finally {
+        if (active) setLoading(false);
       }
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Could not load quiz.', [{ text: 'OK', onPress: () => router.back() }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (timeLeft === null) return;
-    timerRef.current = setInterval(() => {
-      setTimeLeft(t => {
-        if (t === null || t <= 1) { handleSubmit(true); return 0; }
-        return t - 1;
-      });
-    }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [timeLeft !== null]);
+    })();
+    return () => {
+      active = false;
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [id, router, userId]);
 
   const handleSelect = (questionId: number, optionId: number) => {
     if (session?.session_type === 'training' && revealed[questionId]) return;
@@ -93,9 +134,14 @@ export default function TakeQuizScreen() {
     // (re-picking an option before submitting must not feed it a second time).
     const firstAnswer = !(questionId in answers);
 
-    setAnswers(prev => ({ ...prev, [questionId]: optionId }));
-    if (session?.session_type === 'training') {
-      setRevealed(prev => ({ ...prev, [questionId]: true }));
+    const nextAnswers = { ...answers, [questionId]: optionId };
+    const nextRevealed = session?.session_type === 'training'
+      ? { ...revealed, [questionId]: true }
+      : revealed;
+    setAnswers(nextAnswers);
+    setRevealed(nextRevealed);
+    if (user && session) {
+      saveQuizProgress(session.session_id, user.id, nextAnswers, nextRevealed, current).catch(() => {});
     }
 
     if (firstAnswer) {
@@ -127,32 +173,69 @@ export default function TakeQuizScreen() {
     if (timerRef.current) clearInterval(timerRef.current);
     setSubmitting(true);
     try {
-      const payload = session!.questions.map(q => ({
+      const answersPayload = session!.questions.map(q => ({
         question_id:      q.question_id,
         selected_option_id: answers[q.question_id] ?? null,
       }));
+      const payload = {
+        answers: answersPayload,
+        started_at: new Date(openedAt ?? Date.now()).toISOString(),
+        completed_at: new Date().toISOString(),
+        ...(session!.offline_created && session!.offline_config
+          ? { offline_session: session!.offline_config }
+          : {}),
+      };
       await room.finish();
-      await client.post(`/quizzes/${id}/submit`, { answers: payload });
-      router.replace({ pathname: '/quiz/results/[id]', params: { id } });
+      if (!user) throw new Error('No signed-in user.');
+
+      if (offline || session!.offline_created) {
+        await queueQuizSubmission(Number(id), user.id, payload);
+        router.replace({ pathname: '/quiz/results/[id]', params: { id, pending: '1' } });
+        return;
+      }
+
+      try {
+        await client.post(`/quizzes/${id}/submit`, payload);
+        await removeCachedQuiz(Number(id), user.id);
+        router.replace({ pathname: '/quiz/results/[id]', params: { id } });
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
+        await queueQuizSubmission(Number(id), user.id, payload);
+        router.replace({ pathname: '/quiz/results/[id]', params: { id, pending: '1' } });
+      }
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Could not submit.');
       setSubmitting(false);
     }
   };
 
-  const handleCancel = () => {
-    Alert.alert(
-      'Cancel Quiz',
-      'Your progress will be lost.',
-      [
-        { text: 'Keep Going', style: 'cancel' },
-        { text: 'Cancel Quiz', style: 'destructive', onPress: async () => {
-          try { await client.post(`/quizzes/${id}/cancel`); } catch {}
-          router.back();
-        }},
-      ]
-    );
-  };
+  useEffect(() => {
+    submitRef.current = doSubmit;
+  });
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!deadlineAt || submitting) return;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((deadlineAt - Date.now()) / 1000));
+      setTimeLeft(remaining);
+      if (remaining === 0 && timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+        submitRef.current();
+      }
+    };
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+    };
+  }, [deadlineAt, submitting]);
 
   if (loading) {
     return <View style={s.center}><ActivityIndicator size="large" color={C.accent} /></View>;
@@ -163,18 +246,16 @@ export default function TakeQuizScreen() {
   const q      = session.questions[current];
   const total  = session.questions.length;
   const answered = Object.keys(answers).length;
-  const progress = current / (total - 1);
   const isTraining = session.session_type === 'training';
 
   return (
     <SafeAreaView style={s.safe}>
+      <Stack.Screen options={{ gestureEnabled: false }} />
       <LiveRoomToasts toasts={room.toasts} />
 
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity onPress={handleCancel}>
-          <Ionicons name="close" size={24} color={C.text} />
-        </TouchableOpacity>
+        <View style={s.headerSide} />
         <View style={{ flex: 1, alignItems: 'center' }}>
           <Text style={s.headerTitle}>{q.item_number} / {total}</Text>
           {timeLeft !== null && (
@@ -204,6 +285,13 @@ export default function TakeQuizScreen() {
       <View style={s.progressBg}>
         <GradientFill diagonal={false} style={[s.progressFill, { width: `${((current + 1) / total) * 100}%` }]} />
       </View>
+
+      {(offline || usingSavedCopy) && (
+        <View style={s.offlineNotice}>
+          <Ionicons name="cloud-offline-outline" size={14} color={C.warning} />
+          <Text style={s.offlineNoticeText}>Offline progress is being saved on this device</Text>
+        </View>
+      )}
 
       {/* Live Room: rivals stay visible on-screen the whole time you're answering */}
       {room.active && <LiveRoomStrip rows={room.rows} onPress={() => setRoomSheetOpen(true)} />}
@@ -259,7 +347,11 @@ export default function TakeQuizScreen() {
       <View style={s.bottomNav}>
         <TouchableOpacity
           style={[s.navBtn, current === 0 && s.navBtnDisabled]}
-          onPress={() => setCurrent(c => Math.max(0, c - 1))}
+          onPress={() => {
+            const next = Math.max(0, current - 1);
+            setCurrent(next);
+            if (user) saveQuizProgress(Number(id), user.id, answers, revealed, next).catch(() => {});
+          }}
           disabled={current === 0}
         >
           <Ionicons name="arrow-back" size={20} color={current === 0 ? C.light : C.text} />
@@ -267,7 +359,11 @@ export default function TakeQuizScreen() {
         </TouchableOpacity>
 
         {current < total - 1 ? (
-          <GradientButton radius={r.md} contentStyle={s.navBtnPrimary} onPress={() => setCurrent(c => c + 1)}>
+          <GradientButton radius={r.md} contentStyle={s.navBtnPrimary} onPress={() => {
+            const next = current + 1;
+            setCurrent(next);
+            if (user) saveQuizProgress(Number(id), user.id, answers, revealed, next).catch(() => {});
+          }}>
             <Text style={s.navBtnPrimaryText}>Next</Text>
             <Ionicons name="arrow-forward" size={20} color={C.white} />
           </GradientButton>
@@ -298,11 +394,14 @@ const s = StyleSheet.create({
   safe:             { flex: 1, backgroundColor: C.bg },
   center:           { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
   header:           { backgroundColor: C.bg, flexDirection: 'row', alignItems: 'center', paddingHorizontal: sp.lg, paddingVertical: sp.md },
+  headerSide:       { width: 24 },
   headerTitle:      { fontSize: 15, fontFamily: font.semiBold, color: C.text },
   timer:            { fontSize: 12, fontFamily: font.medium, color: C.muted, marginTop: 2 },
   answeredCount:    { fontSize: 13, fontFamily: font.regular, color: C.muted },
   progressBg:       { height: 3, backgroundColor: C.border },
   progressFill:     { height: 3 },
+  offlineNotice:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.warning + '16', paddingVertical: 7 },
+  offlineNoticeText:{ fontSize: 11.5, fontFamily: font.medium, color: C.muted },
   questionText:     { fontSize: 16, lineHeight: 24, color: C.text, fontFamily: font.semiBold, marginBottom: sp.lg },
   option:           { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: r.lg, padding: sp.md, marginBottom: sp.sm, borderWidth: 1, borderColor: C.border, },
   optionSelected:   { borderColor: C.accent, backgroundColor: 'rgba(165,32,32,0.04)' },

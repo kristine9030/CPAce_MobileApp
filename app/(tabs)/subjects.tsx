@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import client from '@/lib/api/client';
+import { useReconnectRefresh } from '@/lib/reconnect-refresh';
 import { C, sp, r, font, grad } from '@/constants/cpace-theme';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { GradientBorder, GradientButton, GradientFill } from '@/components/ui/gradient';
@@ -67,6 +68,7 @@ export default function SubjectsScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  useReconnectRefresh(() => load(true));
 
   // Same destination as the web's "Review Subject" link: the topic list.
   const openSubject = (item: Subject) => router.push({
